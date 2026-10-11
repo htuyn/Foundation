@@ -102,3 +102,10 @@
 - Thêm khóa camera đang khởi tạo, mã generation để bỏ kết quả mở camera muộn sau stop/unmount, dừng `IScannerControls` và toàn bộ media tracks, giữ cooldown quét. Mất kết nối dừng camera; có nút kết nối lại WebSocket hoặc thử xác thực lại khi lỗi tạm thời. Lỗi nonce/session terminal hướng người dùng tạo QR mới.
 - Không thay đổi API/WebSocket, payload, cơ chế ACK, xác thực hoặc kiểm tra thời hạn. UI báo lỗi quyền/tìm camera và cho nhập mã thủ công như trước.
 - Kết quả hiện tại: `npm run build` đạt; `npm run test:vercel-routing` đạt 5/5. Đây là build và source-contract tests, không mô phỏng getUserMedia thật; kiểm thử quyền grant/deny, camera vật lý, rời trang trên mobile và backend production chưa thể xác minh trong môi trường này.
+
+## Quét nhiều sản phẩm trong cùng scanner session
+- Nguyên nhân: `ScannerConnectionDialog` gọi `closeSession()` trong cleanup khi modal unmount và trong `dismiss`. Đóng cửa sổ QR để thao tác form vì vậy kết thúc session; mobile nhận trạng thái `ended` rồi dừng camera. Backend `store_scan` và WebSocket scan handler không đóng session theo event, mà xác nhận/persist/broadcast từng event.
+- Giữ `ScannerConnectionDialog` mounted bên trong `RemoteScannerButton` trong cả trạng thái ẩn; ẩn/đóng UI chỉ bỏ modal, giữ owner subscription và callback scan. Nút “Ngắt kết nối” vẫn gọi endpoint close tường minh; mobile leave, expiry và xác thực terminal giữ nguyên.
+- Thêm frontend source-contract test cho receiver vẫn mounted và session chỉ đóng qua action rõ ràng. Mở rộng PostgreSQL integration test: gửi hai barcode với eventId riêng trong cùng session, xác nhận status vẫn `connected`, duplicate event vẫn idempotent và leave mới kết thúc session.
+- Kiểm thử thực tế: `npm run build` đạt; `npm run test:vercel-routing` đạt 6/6; `python -m pytest -q -p no:asyncio` đạt 23 passed, 7 skipped, một cảnh báo deprecation. PostgreSQL integration test mở rộng nằm trong nhóm skipped khi không bật DB; chưa có browser/mobile hai thiết bị nên camera/session production chưa được xác minh.
+- Không đổi backend runtime, schema, migration, endpoint hay payload. Cần redeploy frontend Vercel; không cần deploy Render hoặc migration.

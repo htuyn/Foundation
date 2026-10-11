@@ -22,6 +22,8 @@
 - Sửa 404 deep-link mobile scanner trên Vercel: thêm `vercel.json` SPA rewrite về `/index.html`; route React `/scanner/mobile`, query `mode/sessionId/expiresAt`, fragment `qrNonce/qrExpiresAt`, xác thực join và WSS vẫn giữ nguyên. Thêm Node built-in routing contract tests và ghi hướng dẫn Root Directory/config production Vercel. Cần kiểm tra Root Directory và các biến `VITE_*` trong dashboard Vercel, rồi xác minh bằng deployment thực tế; chưa có quyền kiểm tra dashboard hay chạy E2E trên điện thoại.
 - Mobile QR scanner tự yêu cầu camera sau chỉ sau khi API join thành công và WebSocket xác nhận `connected`; camera attempt được khóa để tránh nhiều stream, callback bị vô hiệu khi dừng/unmount và tracks được dừng rõ ràng. Có fallback quyền camera, retry kết nối và retry camera; nonce/thời hạn/payload/ACK giữ nguyên. Chưa kiểm thử quyền/camera hoặc pairing trên thiết bị thật.
 
+- Scanner desktop giữ `ScannerConnectionDialog` và event receiver mounted nhưng ẩn UI, nên có thể ẩn cửa sổ QR để sửa quick-create sản phẩm mà không đóng session hoặc mất callback scan. Chỉ nút “Ngắt kết nối” gọi close endpoint; backend scan event vốn không đóng phiên. Kiểm tra nhiều event đã được thêm vào PostgreSQL integration test, chưa chạy do không bật DB test.
+
 ## Việc cần chú ý khi tiếp tục
 1. Camera thật và WebSocket hai thiết bị chưa kiểm thử; cần frontend/API HTTPS truy cập được trên điện thoại và PostgreSQL đang chạy.
 2. Kiểm tra `docs/integration-audit.md` và các tài liệu contract trước khi đổi API hoặc nghiệp vụ.

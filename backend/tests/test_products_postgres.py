@@ -547,14 +547,21 @@ def test_scanner_qr_join_and_scan_delivery_rolls_back_test_data() -> None:
             assert scan_response.status_code == 200
             assert scan_response.json()["delivered"] is True
             assert scan_response.json()["duplicate"] is False
+            assert client.get(f"/api/v1/scanner/sessions/{session_id}", headers=owner_headers).json()["status"] == "connected"
 
             duplicate_response = client.post(scan_url, json=event, headers=device_headers)
             assert duplicate_response.status_code == 200
             assert duplicate_response.json()["duplicate"] is True
+
+            second_event = {**event, "eventId": str(uuid4()), "barcode": "8938501001002"}
+            second_scan_response = client.post(scan_url, json=second_event, headers=device_headers)
+            assert second_scan_response.status_code == 200
+            assert second_scan_response.json()["delivered"] is True
+            assert second_scan_response.json()["duplicate"] is False
             stored_events = client.get(scan_url, headers=owner_headers).json()
-            assert len(stored_events) == 1
-            assert stored_events[0]["eventId"] == event["eventId"]
-            assert stored_events[0]["barcode"] == event["barcode"]
+            assert len(stored_events) == 2
+            assert {item["eventId"] for item in stored_events} == {event["eventId"], second_event["eventId"]}
+            assert {item["barcode"] for item in stored_events} == {event["barcode"], second_event["barcode"]}
             assert stored_events[0]["scannedAt"].startswith("2026-01-01T00:00:00")
             leave_response = client.post(
                 f"/api/v1/scanner/sessions/{session_id}/leave",

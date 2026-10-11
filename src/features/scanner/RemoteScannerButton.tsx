@@ -12,6 +12,6 @@ export function RemoteScannerButton({ onScan, className = 'button button-seconda
   const [open, setOpen] = useState(false)
   return <>
     <button type="button" className={className} onClick={() => setOpen(true)} disabled={disabled}><Smartphone size={15} />{label}</button>
-    {open && <ScannerConnectionDialog onClose={() => setOpen(false)} onScan={onScan} />}
+    <ScannerConnectionDialog open={open} onClose={() => setOpen(false)} onScan={onScan} />
   </>
 }

@@ -7,6 +7,8 @@ const vercelConfig = JSON.parse(readProjectFile('../vercel.json'))
 const appSource = readProjectFile('../src/App.tsx')
 const mobilePageSource = readProjectFile('../src/features/scanner/ScannerMobilePage.tsx')
 const scannerServiceSource = readProjectFile('../src/features/scanner/scannerService.ts')
+const connectionDialogSource = readProjectFile('../src/features/scanner/ScannerConnectionDialog.tsx')
+const remoteScannerButtonSource = readProjectFile('../src/features/scanner/RemoteScannerButton.tsx')
 
 test('Vercel rewrites direct SPA requests to the Vite entry document', () => {
   assert.deepEqual(vercelConfig.rewrites, [
@@ -48,4 +50,14 @@ test('mobile camera auto-starts only after API authentication and cleans up safe
   assert.match(mobilePageSource, /NotFoundError[\s\S]*CAMERA_NOT_FOUND/)
   assert.match(mobilePageSource, /Cho phép camera \/ Bật camera/)
   assert.match(mobilePageSource, /Thử kết nối lại/)
+})
+
+test('hiding the desktop scanner dialog keeps its session receiver mounted', () => {
+  assert.match(remoteScannerButtonSource, /<ScannerConnectionDialog open=\{open\}/)
+  assert.match(connectionDialogSource, /if \(!open\) return null/)
+  assert.match(connectionDialogSource, /useEffect\(\(\) => \{\s*if \(!session\) return\s*const unsubscribe = scanEventService\.subscribe/)
+  assert.doesNotMatch(connectionDialogSource, /return \(\) => \{ void scannerSessionService\.closeSession/)
+  assert.doesNotMatch(connectionDialogSource, /const dismiss = \(\) => \{[\s\S]*?closeSession\(/)
+  assert.match(connectionDialogSource, /onClick=\{closeSession\}><Unplug[\s\S]*?Ngắt kết nối/)
+  assert.match(connectionDialogSource, /await scannerSessionService\.closeSession\(session\.sessionId\)/)
 })
