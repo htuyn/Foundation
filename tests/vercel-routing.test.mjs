@@ -18,6 +18,13 @@ test('Vercel rewrites direct SPA requests to the Vite entry document', () => {
 
 test('React Router keeps the mobile scanner route registered', () => {
   assert.match(appSource, /<Route path="\/scanner\/mobile" element={<ScannerMobilePage\s*\/>} \/>/)
+  assert.ok(appSource.indexOf('<Route path="/scanner/mobile"') < appSource.indexOf('<Route element={<Layout />}>'))
+})
+
+test('production QR requires an explicit configured frontend origin', () => {
+  assert.match(connectionDialogSource, /import\.meta\.env\.VITE_SCANNER_MOBILE_BASE_URL\?\.trim\(\) \?\? ''/)
+  assert.match(connectionDialogSource, /import\.meta\.env\.PROD && !configuredMobileBaseUrl/)
+  assert.match(connectionDialogSource, /configuredMobileBaseUrl \|\| window\.location\.origin/)
 })
 
 test('mobile scanner reads and validates session and QR expiry parameters', () => {

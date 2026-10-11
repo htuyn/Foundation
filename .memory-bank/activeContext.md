@@ -23,6 +23,7 @@
 - Mobile QR scanner tự yêu cầu camera sau chỉ sau khi API join thành công và WebSocket xác nhận `connected`; camera attempt được khóa để tránh nhiều stream, callback bị vô hiệu khi dừng/unmount và tracks được dừng rõ ràng. Có fallback quyền camera, retry kết nối và retry camera; nonce/thời hạn/payload/ACK giữ nguyên. Chưa kiểm thử quyền/camera hoặc pairing trên thiết bị thật.
 
 - Scanner desktop giữ `ScannerConnectionDialog` và event receiver mounted nhưng ẩn UI, nên có thể ẩn cửa sổ QR để sửa quick-create sản phẩm mà không đóng session hoặc mất callback scan. Chỉ nút “Ngắt kết nối” gọi close endpoint; backend scan event vốn không đóng phiên. Kiểm tra nhiều event đã được thêm vào PostgreSQL integration test, chưa chạy do không bật DB test.
+- Triage Vercel mobile-login: source không có auth guard/redirect cho `/scanner/mobile`; route nằm ngoài `Layout`, SPA rewrite hiện có. QR chỉ fallback `VITE_SCANNER_MOBILE_BASE_URL` rỗng về origin đang mở, có thể là Preview deployment. Production hiện yêu cầu khai báo rõ public canonical origin bằng biến Production-scope; không có quyền xác minh hoặc đổi Deployment Protection trong Dashboard. Scanner session auth nonce/expiry không thay đổi.
 
 ## Việc cần chú ý khi tiếp tục
 1. Camera thật và WebSocket hai thiết bị chưa kiểm thử; cần frontend/API HTTPS truy cập được trên điện thoại và PostgreSQL đang chạy.

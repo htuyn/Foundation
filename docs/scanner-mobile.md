@@ -21,7 +21,7 @@
 
 ## Tích hợp backend hiện tại
 
-- Khi chạy Vite trực tiếp, `.env` cần `VITE_API_BASE_URL=/api/v1` và `VITE_DEV_API_TARGET=http://127.0.0.1:8000`. Lưu `.env` dạng UTF-8 không BOM; BOM ở đầu file có thể khiến Vite bỏ qua biến đầu tiên. Khởi động lại Vite sau khi sửa cấu hình. `VITE_SCANNER_MOBILE_BASE_URL` là tùy chọn; QR phải dùng origin HTTPS truy cập được từ điện thoại, không dùng `localhost`. Script `scripts/start-lan-vite.ps1` tự cấu hình API proxy và origin HTTPS LAN.
+- Khi chạy Vite trực tiếp, `.env` cần `VITE_API_BASE_URL=/api/v1` và `VITE_DEV_API_TARGET=http://127.0.0.1:8000`. Lưu `.env` dạng UTF-8 không BOM; BOM ở đầu file có thể khiến Vite bỏ qua biến đầu tiên. Khởi động lại Vite sau khi sửa cấu hình. `VITE_SCANNER_MOBILE_BASE_URL` có thể để trống trong local dev; QR phải dùng origin HTTPS truy cập được từ điện thoại, không dùng `localhost`. Script `scripts/start-lan-vite.ps1` tự cấu hình API proxy và origin HTTPS LAN.
 - `src/features/scanner/types.ts`: `ScannerSession`, `ScanEvent`, `ScanResult`, `ConnectionStatus`, `ScannerError` và service contracts.
 - `scannerService.ts`: remote WebSocket chỉ hoạt động khi có `VITE_API_BASE_URL`; không cấu hình API thì remote scanner bị disable, không giả lập đồng bộ. REST API dành cho tạo session, join, đọc lại event và tương thích client cũ; WebSocket device gửi scan payload, owner nhận broadcast.
 - `BarcodeScannerDialog.tsx`: camera trực tiếp, chọn thiết bị, tùy chọn đèn flash, quyền/lỗi camera, nhập thủ công và dọn media tracks. Chế độ mặc định đọc một mã; `continuous` giữ camera hoạt động và cooldown cùng barcode 1,8 giây.
@@ -33,7 +33,7 @@
 ## Hợp đồng API
 
 - `POST /api/v1/scanner/sessions` — tạo phiên, trả session ID, owner token và `expiresAt`.
-- `POST /api/v1/scanner/sessions/{sessionId}/qr` — owner bearer phát nonce QR dùng một lần và `expiresAt`; frontend tự ghép session ID/nonce vào `/scanner/mobile` dưới `VITE_SCANNER_MOBILE_BASE_URL` (hoặc origin hiện tại), rồi dùng thư viện `qrcode` để render. Modal chỉ gọi route này khi origin HTTPS hợp lệ; HTTP/localhost sẽ chặn QR và thông báo lý do.
+- `POST /api/v1/scanner/sessions/{sessionId}/qr` — owner bearer phát nonce QR dùng một lần và `expiresAt`; frontend tự ghép session ID/nonce vào `/scanner/mobile` dưới `VITE_SCANNER_MOBILE_BASE_URL` (hoặc origin hiện tại trong development), rồi dùng thư viện `qrcode` để render. Modal chỉ gọi route này khi origin HTTPS hợp lệ; HTTP/localhost hoặc thiếu production origin sẽ chặn QR và thông báo lý do.
 - `POST /api/v1/scanner/sessions/{sessionId}/join` — mobile gửi QR nonce và tên thiết bị; trả device bearer.
 - `GET /api/v1/scanner/sessions/{sessionId}` — owner bearer đọc trạng thái phiên/thiết bị.
 - `WS /api/v1/ws/scanner/sessions/{sessionId}/device` — device token qua subprotocol; mobile gửi scan message, backend ACK và persist idempotent theo `eventId`.
@@ -49,7 +49,8 @@ Backend lookup barcode riêng bằng `GET /api/v1/products/lookup?barcode=...`, 
 
 - Frontend Vite nằm tại thư mục gốc repository (cùng cấp `package.json`, `vite.config.ts`, `index.html`); Vercel Project nên đặt **Root Directory** là `.` và Build Output Directory là `dist`.
 - `vercel.json` rewrite các đường dẫn SPA về `/index.html`, để URL QR `/scanner/mobile?...` tải ứng dụng trước khi React Router xử lý route.
-- Trong Vercel Project Settings → Environment Variables, cấu hình `VITE_API_BASE_URL` bằng URL HTTPS của backend Render kèm prefix `/api/v1` (không dùng `localhost` hoặc `/api/v1` tương đối cho production). Nếu `VITE_SCANNER_MOBILE_BASE_URL` được đặt, giá trị phải là origin HTTPS của frontend Vercel, không kèm path/query; nếu bỏ trống QR dùng origin của trang đang mở.
+- Trong Vercel Project Settings → Environment Variables, cấu hình `VITE_API_BASE_URL` bằng URL HTTPS của backend Render kèm prefix `/api/v1` (không dùng `localhost` hoặc `/api/v1` tương đối cho production). Bắt buộc cấu hình `VITE_SCANNER_MOBILE_BASE_URL` ở **Production scope** bằng origin HTTPS công khai/canonical của frontend (không kèm path/query và không phải URL Preview). Production build sẽ không tạo QR nếu thiếu biến này; local development vẫn có thể fallback về origin đang mở.
+- Vercel Deployment Protection không được điều khiển bởi React Router hoặc `vercel.json` này. Giữ Preview Deployment Protection; kiểm tra Production domain/deployment có đặt Vercel Authentication/Password Protection hay không. Không có cách loại trừ riêng `/scanner/mobile` khỏi protection bằng SPA rewrite. Nếu Production được bảo vệ, điện thoại sẽ cần Vercel login trước khi React chạy; chỉ thay đổi protection sau khi đánh giá quyền truy cập toàn ứng dụng, vì frontend hiện không có đăng nhập người dùng riêng.
 - Các biến `VITE_*` được nhúng lúc build; sau khi thay đổi cần redeploy frontend. Không thay đổi xác thực phiên: backend vẫn kiểm tra owner/device token, nonce dùng một lần và hạn phiên/QR.
 
 
