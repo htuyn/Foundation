@@ -536,6 +536,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .mobile-button-secondary:hover{border-color:color-mix(in srgb,var(--primary) 42%,var(--border));background:color-mix(in srgb,var(--primary) 5%,var(--surface))}
 .mobile-button:disabled{cursor:not-allowed;opacity:.52;box-shadow:none}
 .mobile-scan-notice{padding:10px 11px;border:1px solid rgba(16,185,129,.2);border-radius:11px;background:rgba(16,185,129,.08);color:var(--emerald)}
+.mobile-connect-retry{width:100%;margin-top:10px}
 .mobile-manual-card form button{width:44px;min-height:44px;border-radius:11px;background:linear-gradient(140deg,#8058ee,#477deb);box-shadow:0 6px 15px rgba(108,79,222,.2);color:#fff;transition:transform .18s,filter .18s}
 .mobile-manual-card form button:not(:disabled):hover{filter:brightness(1.08);transform:translateY(-1px)}
 .mobile-manual-card form button:disabled{opacity:.5}

@@ -35,8 +35,8 @@ function makeEvent(sessionId: string, barcode: string, format: ScanFormat): Scan
 
 function cameraError(error: unknown): ScannerError {
   const name = error instanceof DOMException ? error.name : ''
-  if (name === 'NotAllowedError' || name === 'SecurityError') return { code: 'CAMERA_PERMISSION_DENIED', message: 'Bạn chưa cấp quyền camera. Hãy cho phép camera trong cài đặt trình duyệt rồi thử lại.', recoverable: true }
-  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') return { code: 'CAMERA_NOT_FOUND', message: 'Không tìm thấy camera trên thiết bị này.', recoverable: false }
+  if (name === 'NotAllowedError' || name === 'SecurityError') return { code: 'CAMERA_PERMISSION_DENIED', message: 'Trình duyệt chưa cấp quyền camera. Hãy cho phép camera trong cài đặt trang rồi bấm “Bật camera”.', recoverable: true }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'OverconstrainedError') return { code: 'CAMERA_NOT_FOUND', message: 'Không tìm thấy camera phù hợp trên thiết bị này.', recoverable: false }
   if (name === 'NotReadableError' || name === 'TrackStartError') return { code: 'CAMERA_IN_USE', message: 'Camera đang được ứng dụng khác sử dụng. Hãy đóng ứng dụng đó rồi thử lại.', recoverable: true }
   return { code: 'CAMERA_START_FAILED', message: error instanceof Error ? error.message : 'Không thể khởi động camera. Hãy thử lại hoặc nhập mã thủ công.', recoverable: true }
 }
@@ -61,14 +61,21 @@ export function ScannerMobilePage() {
   const [manualCode, setManualCode] = useState('')
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [deviceId, setDeviceId] = useState('')
+  const [joinAttempt, setJoinAttempt] = useState(0)
+  const [joinFailed, setJoinFailed] = useState(false)
   const [history, setHistory] = useState<ScanResult[]>([])
   const [notice, setNotice] = useState('')
-  const [joinMessage, setJoinMessage] = useState(mode === 'api' ? 'Đang xác thực phiên với backend.' : 'Đang kiểm tra liên kết demo; backend chưa xác thực phiên.')
+  const [joinMessage, setJoinMessage] = useState(mode === 'api'
+    ? validSessionUrl && qrWasCurrentAtOpen ? 'Đang xác thực phiên với backend.' : 'Liên kết không hợp lệ hoặc QR đã hết hạn.'
+    : 'Đang kiểm tra liên kết demo; backend chưa xác thực phiên.')
   const [torchOn, setTorchOn] = useState(false)
   const [clock, setClock] = useState(Date.now())
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
   const mountedRef = useRef(false)
+  const cameraStartingRef = useRef(false)
+  const cameraAttemptRef = useRef(0)
+  const autoCameraAttemptedRef = useRef(false)
   const pausedRef = useRef(false)
   const lastScanRef = useRef<{ barcode: string; at: number } | null>(null)
   const joinStartedRef = useRef(false)
@@ -78,6 +85,7 @@ export function ScannerMobilePage() {
   const canScan = validSessionUrl && qrWasCurrentAtOpen && !sessionExpired && (mode === 'demo' || connectionStatus === 'connected')
 
   const stopCamera = useCallback(() => {
+    cameraAttemptRef.current += 1
     controlsRef.current?.stop()
     controlsRef.current = null
     const video = videoRef.current
@@ -102,6 +110,7 @@ export function ScannerMobilePage() {
         setHistory((current) => current.map((item) => item.event.eventId === event.eventId ? { ...item, status: 'failed', message: sendError instanceof Error ? sendError.message : 'Gửi mã thất bại; hãy thử gửi lại.' } : item))
         if (sendError instanceof ScannerApiError && [403, 410].includes(sendError.status)) {
           setConnectionStatus(sendError.status === 410 ? 'expired' : 'error')
+          setJoinMessage(`${sendError.message} Hãy quay lại máy tính để tạo phiên/QR mới.`)
           setError({ code: sendError.code ?? 'SCANNER_SESSION_CLOSED', message: sendError.message, recoverable: false })
           stopCamera()
         }
@@ -148,7 +157,10 @@ export function ScannerMobilePage() {
       setError({ code: 'CAMERA_UNSUPPORTED', message: 'Trình duyệt này không hỗ trợ truy cập camera. Bạn vẫn có thể nhập mã thủ công.', recoverable: false })
       return
     }
-    stopCamera()
+    if (cameraStartingRef.current) return
+    if (controlsRef.current) stopCamera()
+    const cameraAttempt = ++cameraAttemptRef.current
+    cameraStartingRef.current = true
     pausedRef.current = false
     setError(null)
     setScanStatus('starting')
@@ -160,7 +172,7 @@ export function ScannerMobilePage() {
         audio: false,
         video: requestedDeviceId ? { deviceId: { exact: requestedDeviceId } } : { facingMode: { ideal: 'environment' } },
       }, videoRef.current ?? undefined, (result) => {
-        if (!result || !mountedRef.current || pausedRef.current) return
+        if (!result || !mountedRef.current || cameraAttemptRef.current !== cameraAttempt || pausedRef.current) return
         const code = result.getText()
         const format = formatNames.get(result.getBarcodeFormat())
         if (format) {
@@ -170,7 +182,7 @@ export function ScannerMobilePage() {
           receiveCode(code, format)
         }
       })
-      if (!mountedRef.current) {
+      if (!mountedRef.current || cameraAttemptRef.current !== cameraAttempt) {
         controls.stop()
         return
       }
@@ -178,6 +190,10 @@ export function ScannerMobilePage() {
       setScanStatus('scanning')
       try {
         const availableDevices = await BrowserMultiFormatReader.listVideoInputDevices()
+        if (!mountedRef.current || cameraAttemptRef.current !== cameraAttempt) {
+          controls.stop()
+          return
+        }
         setDevices(availableDevices)
         if (!requestedDeviceId) {
           const preferred = availableDevices.find((device) => /back|rear|environment|tr[aă] sau/i.test(device.label))
@@ -187,8 +203,12 @@ export function ScannerMobilePage() {
         setDevices([])
       }
     } catch (cameraFailure) {
-      stopCamera()
-      if (mountedRef.current) setError(cameraError(cameraFailure))
+      if (cameraAttemptRef.current === cameraAttempt && mountedRef.current) {
+        stopCamera()
+        setError(cameraError(cameraFailure))
+      }
+    } finally {
+      cameraStartingRef.current = false
     }
   }, [canScan, deviceId, receiveCode, stopCamera])
 
@@ -210,6 +230,36 @@ export function ScannerMobilePage() {
     return () => window.clearInterval(timer)
   }, [])
 
+  const handleDeviceStatus = useCallback((nextStatus: ConnectionStatus | 'device_disconnected' | 'retry_exhausted') => {
+    if (!mountedRef.current) return
+    if (nextStatus === 'retry_exhausted') {
+      autoCameraAttemptedRef.current = false
+      setConnectionStatus('disconnected')
+      setJoinMessage('Đã dừng thử kết nối sau 8 lần. Hãy thử kết nối lại hoặc quét QR mới.')
+      stopCamera()
+      return
+    }
+    if (nextStatus === 'device_disconnected' || nextStatus === 'disconnected') {
+      autoCameraAttemptedRef.current = false
+      setConnectionStatus('disconnected')
+      setJoinMessage('Mất kết nối với backend; camera đã dừng và hệ thống đang thử kết nối lại.')
+      stopCamera()
+      return
+    }
+    setConnectionStatus(nextStatus)
+    if (nextStatus === 'connected') setJoinMessage('Điện thoại đã ghép nối và kết nối tới backend.')
+    if (nextStatus === 'ended' || nextStatus === 'expired') {
+      setJoinMessage(nextStatus === 'expired' ? 'Phiên scanner đã hết hạn.' : 'Máy tính đã ngắt phiên scanner.')
+      setError({ code: nextStatus === 'expired' ? 'SESSION_EXPIRED' : 'SESSION_ENDED', message: nextStatus === 'expired' ? 'Phiên scanner đã hết hạn.' : 'Máy tính đã ngắt phiên scanner.', recoverable: false })
+      stopCamera()
+    }
+  }, [stopCamera])
+
+  const startDeviceConnection = useCallback(() => {
+    mobileConnectionCleanupRef.current?.()
+    mobileConnectionCleanupRef.current = scannerSessionService.connectDevice(sessionId, handleDeviceStatus)
+  }, [handleDeviceStatus, sessionId])
+
   useEffect(() => {
     if (!validSessionUrl || !qrWasCurrentAtOpen || joinStartedRef.current) return
     joinStartedRef.current = true
@@ -219,31 +269,15 @@ export function ScannerMobilePage() {
       setJoinMessage(result.message)
       if (result.joined) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
       if (result.joined) {
-        mobileConnectionCleanupRef.current = scannerSessionService.connectDevice(sessionId, (nextStatus) => {
-          if (!mountedRef.current) return
-          if (nextStatus === 'retry_exhausted') {
-            setConnectionStatus('disconnected')
-            setJoinMessage('Đã dừng thử kết nối sau 8 lần. Kiểm tra mạng/backend rồi tải lại QR mới.')
-            stopCamera()
-            return
-          }
-          if (nextStatus === 'device_disconnected' || nextStatus === 'disconnected') {
-            setConnectionStatus('disconnected')
-            setJoinMessage('Mất kết nối với backend; đang thử kết nối lại.')
-          } else {
-            setConnectionStatus(nextStatus)
-            if (nextStatus === 'connected') setJoinMessage('Điện thoại đã ghép nối và kết nối tới backend.')
-            if (nextStatus === 'ended' || nextStatus === 'expired') {
-              setError({ code: nextStatus === 'expired' ? 'SESSION_EXPIRED' : 'SESSION_ENDED', message: nextStatus === 'expired' ? 'Phiên scanner đã hết hạn.' : 'Máy tính đã ngắt phiên scanner.', recoverable: false })
-              stopCamera()
-            }
-          }
-        })
+        setJoinFailed(false)
+        startDeviceConnection()
       } else setConnectionStatus(mode === 'api' ? 'error' : 'unverified_demo')
     }).catch((joinError) => {
       if (cancelled || !mountedRef.current) return
+      const requiresNewQr = joinError instanceof ScannerApiError && [403, 404, 409, 410].includes(joinError.status)
+      setJoinFailed(!requiresNewQr)
       setConnectionStatus('error')
-      setJoinMessage(joinError instanceof Error ? joinError.message : 'Không thể tham gia phiên scanner.')
+      setJoinMessage(`${joinError instanceof Error ? joinError.message : 'Không thể tham gia phiên scanner.'} Nếu QR đã hết hạn hoặc đã được dùng, hãy tạo phiên/QR mới trên máy tính.`)
     })
     return () => {
       cancelled = true
@@ -251,11 +285,23 @@ export function ScannerMobilePage() {
       mobileConnectionCleanupRef.current = null
       if (!mobileConnectionCleanupRef.current) joinStartedRef.current = false
     }
-  }, [mode, qrNonce, qrWasCurrentAtOpen, sessionId, stopCamera, validSessionUrl])
+  }, [joinAttempt, mode, qrNonce, qrWasCurrentAtOpen, sessionId, startDeviceConnection, validSessionUrl])
+
+  useEffect(() => {
+    if (connectionStatus !== 'connected') {
+      autoCameraAttemptedRef.current = false
+      if (scanStatus !== 'stopped') stopCamera()
+      return
+    }
+    if (mode !== 'api' || !canScan || autoCameraAttemptedRef.current) return
+    autoCameraAttemptedRef.current = true
+    void startCamera()
+  }, [canScan, connectionStatus, mode, scanStatus, startCamera, stopCamera])
 
   useEffect(() => {
     if (sessionExpired) {
       setConnectionStatus('expired')
+       setJoinMessage('Phiên scanner đã hết hạn. Hãy quay lại máy tính và tạo phiên mới.')
        setError({ code: 'SESSION_EXPIRED', message: 'Phiên scanner đã hết hạn. Hãy quay lại máy tính và tạo phiên mới.', recoverable: false })
       stopCamera()
     }
@@ -274,6 +320,22 @@ export function ScannerMobilePage() {
     void deliver(item.event)
   }
 
+  const retryConnection = () => {
+    setError(null)
+    if (connectionStatus === 'disconnected') {
+      autoCameraAttemptedRef.current = false
+      setJoinMessage('Đang kết nối lại WebSocket tới backend…')
+      setConnectionStatus('waiting_for_device')
+      startDeviceConnection()
+      return
+    }
+    joinStartedRef.current = false
+    setJoinFailed(false)
+    setJoinMessage('Đang xác thực lại nonce với backend…')
+    setConnectionStatus('waiting_for_device')
+    setJoinAttempt((attempt) => attempt + 1)
+  }
+
   const toggleTorch = async () => {
     const controls = controlsRef.current
     if (!controls?.switchTorch) {
@@ -290,18 +352,18 @@ export function ScannerMobilePage() {
 
   return <main className="mobile-scanner-page">
     <header className="mobile-scanner-header"><div className="mobile-scanner-brand"><span><ScanLine size={18} /></span><div><strong>Smart Warehouse</strong><small>TRÌNH QUÉT DI ĐỘNG</small></div></div><span className="demo-pill">{mode === 'api' ? 'API' : 'DEMO'}</span></header>
-    <section className="mobile-session-card"><div className="mobile-session-top"><div className="mobile-session-icon"><Smartphone size={17} /></div><div><strong>{connectionStatus === 'expired' ? 'Phiên đã hết hạn' : !qrWasCurrentAtOpen ? 'QR đã hết hạn' : validSessionUrl ? mode === 'api' ? 'Phiên đã xác minh' : 'Phiên demo chưa xác minh' : 'Phiên không hợp lệ'}</strong><small>{validSessionUrl ? `Mã phiên ${sessionId.slice(0, 17)}…` : 'Không thể xác minh QR này.'}</small></div></div><div className="mobile-demo-warning"><WifiOff size={15} /><span>{joinMessage} {mode === 'api' ? 'Mã quét được gửi tới backend.' : <>Mã quét chỉ lưu tạm trên điện thoại, <strong>không gửi về máy tính</strong>.</>}</span></div></section>
+    <section className="mobile-session-card"><div className="mobile-session-top"><div className="mobile-session-icon"><Smartphone size={17} /></div><div><strong>{connectionStatus === 'expired' ? 'Phiên đã hết hạn' : !qrWasCurrentAtOpen ? 'QR đã hết hạn' : validSessionUrl ? mode === 'api' ? 'Phiên đã xác minh' : 'Phiên demo chưa xác minh' : 'Phiên không hợp lệ'}</strong><small>{validSessionUrl ? `Mã phiên ${sessionId.slice(0, 17)}…` : 'Không thể xác minh QR này.'}</small></div></div><div className="mobile-demo-warning" role={joinFailed || connectionStatus === 'disconnected' || connectionStatus === 'error' || connectionStatus === 'expired' ? 'alert' : undefined}><WifiOff size={15} /><span>{joinMessage} {mode === 'api' ? 'Mã quét được gửi tới backend.' : <>Mã quét chỉ lưu tạm trên điện thoại, <strong>không gửi về máy tính</strong>.</>}</span></div>{mode === 'api' && validSessionUrl && !sessionExpired && (joinFailed || connectionStatus === 'disconnected') && <button type="button" className="mobile-button mobile-button-secondary mobile-connect-retry" onClick={retryConnection}>{connectionStatus === 'disconnected' ? 'Thử kết nối lại' : 'Thử xác thực lại'}</button>}</section>
     <section className="mobile-camera-card">
-      <div className="mobile-section-heading"><div><h1>Quét mã sản phẩm</h1><p>Hướng camera vào barcode trên sản phẩm</p></div>{scanStatus === 'scanning' && <span className="camera-live"><i />Đang quét</span>}</div>
+      <div className="mobile-section-heading"><div><h1>Quét mã sản phẩm</h1><p>{scanStatus === 'starting' ? 'Đang yêu cầu quyền truy cập camera…' : scanStatus === 'scanning' ? 'Hướng camera vào barcode trên sản phẩm' : scanStatus === 'paused' ? 'Camera đang tạm dừng' : 'Camera sẽ tự bật sau khi phiên được xác thực'}</p></div>{scanStatus === 'scanning' && <span className="camera-live"><i />Đang quét</span>}</div>
       <div className={`camera-viewport ${scanStatus === 'scanning' || scanStatus === 'paused' ? 'camera-active' : ''}`}>
         <video ref={videoRef} muted playsInline className={scanStatus === 'scanning' || scanStatus === 'paused' ? 'camera-video visible' : 'camera-video'} />
-        {scanStatus !== 'scanning' && scanStatus !== 'paused' && <div className="camera-placeholder"><Camera size={27} /><strong>{scanStatus === 'starting' ? 'Đang mở camera…' : 'Camera đang tắt'}</strong><span>Cho phép truy cập camera khi trình duyệt hỏi.</span></div>}
+        {scanStatus !== 'scanning' && scanStatus !== 'paused' && <div className="camera-placeholder"><Camera size={27} /><strong>{scanStatus === 'starting' ? 'Đang xin quyền camera…' : error?.code === 'CAMERA_PERMISSION_DENIED' ? 'Camera chưa được cấp quyền' : error?.code === 'CAMERA_NOT_FOUND' ? 'Không tìm thấy camera' : 'Camera đang tắt'}</strong><span>{error?.code === 'CAMERA_PERMISSION_DENIED' ? 'Cho phép camera trong cài đặt trình duyệt hoặc biểu tượng ổ khóa, sau đó thử lại.' : 'Sau khi cho phép, camera sau sẽ mở tự động khi phiên API kết nối thành công.'}</span></div>}
         {scanStatus === 'scanning' && <div className="camera-guide" aria-hidden="true"><i /></div>}
         {(scanStatus === 'scanning' || scanStatus === 'paused') && <div className="camera-overlay-bottom"><span>{scanStatus === 'paused' ? 'Đã tạm dừng nhận diện' : 'Đưa barcode vào khung; quét liên tục'}</span>{controlsRef.current?.switchTorch && <button type="button" aria-label={torchOn ? 'Tắt đèn flash' : 'Bật đèn flash'} onClick={toggleTorch} className={torchOn ? 'flash-active' : ''}><Flashlight size={17} /></button>}</div>}
       </div>
       {devices.length > 1 && <label className="mobile-camera-select"><span>Camera</span><select value={deviceId} onChange={(event) => { setDeviceId(event.target.value); if (scanStatus === 'scanning') void startCamera(event.target.value) }}><option value="">Camera sau (tự chọn)</option>{devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>)}</select></label>}
-      {error && <div className={`mobile-camera-error ${error.code === 'TORCH_UNSUPPORTED' || error.code === 'TORCH_FAILED' ? 'minor' : ''}`} role="alert"><AlertTriangle size={15} /><span>{error.message}</span>{error.recoverable && scanStatus === 'stopped' && <button type="button" onClick={() => void startCamera()}>Thử lại</button>}</div>}
-      <div className="mobile-camera-actions">{scanStatus === 'scanning' || scanStatus === 'paused' ? <><button type="button" className="mobile-button mobile-button-secondary" onClick={togglePause}>{scanStatus === 'paused' ? <Play size={18} /> : <Pause size={18} />}{scanStatus === 'paused' ? 'Tiếp tục quét' : 'Tạm dừng'}</button><button type="button" className="mobile-button mobile-button-secondary" onClick={stopCamera}><CameraOff size={18} />Dừng camera</button></> : <button type="button" className="mobile-button mobile-button-primary" disabled={!canScan || scanStatus === 'starting'} onClick={() => void startCamera()}><Camera size={18} />{scanStatus === 'starting' ? 'Đang mở camera…' : 'Bắt đầu quét liên tục'}</button>}</div>
+      {error && <div className={`mobile-camera-error ${error.code === 'TORCH_UNSUPPORTED' || error.code === 'TORCH_FAILED' ? 'minor' : ''}`} role="alert"><AlertTriangle size={15} /><span>{error.message}</span></div>}
+      <div className="mobile-camera-actions">{scanStatus === 'starting' ? <button type="button" className="mobile-button mobile-button-secondary" onClick={stopCamera}><CameraOff size={18} />Hủy yêu cầu camera</button> : scanStatus === 'scanning' || scanStatus === 'paused' ? <><button type="button" className="mobile-button mobile-button-secondary" onClick={togglePause}>{scanStatus === 'paused' ? <Play size={18} /> : <Pause size={18} />}{scanStatus === 'paused' ? 'Tiếp tục quét' : 'Tạm dừng'}</button><button type="button" className="mobile-button mobile-button-secondary" onClick={stopCamera}><CameraOff size={18} />Tắt camera</button></> : <button type="button" className="mobile-button mobile-button-primary" disabled={!canScan} onClick={() => void startCamera()}><Camera size={18} />{error?.code === 'CAMERA_PERMISSION_DENIED' ? 'Cho phép camera / Bật camera' : 'Bật camera'}</button>}</div>
       {notice && <div className="mobile-scan-notice"><Check size={15} />{notice}</div>}
     </section>
      <section className="mobile-manual-card"><h2>Nhập barcode thủ công</h2><form onSubmit={submitManual}><input value={manualCode} onChange={(event) => setManualCode(event.target.value)} disabled={!canScan} placeholder="Barcode sản phẩm" aria-label="Nhập barcode sản phẩm" /><button type="submit" disabled={!manualCode.trim() || !canScan} aria-label="Gửi barcode"><Send size={17} /></button></form></section>

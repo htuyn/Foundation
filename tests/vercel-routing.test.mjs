@@ -35,3 +35,17 @@ test('scanner continues to use the configured API and secure WebSocket protocol'
   assert.match(scannerServiceSource, /\{ method: 'POST', body: JSON\.stringify\(\{ qrNonce, deviceName \}\) \}/)
   assert.match(scannerServiceSource, /configured\.origin !== window\.location\.origin && localApi && !localPage/)
 })
+
+test('mobile camera auto-starts only after API authentication and cleans up safely', () => {
+  assert.match(mobilePageSource, /mode !== 'api' \|\| !canScan \|\| autoCameraAttemptedRef\.current/)
+  assert.match(mobilePageSource, /cameraStartingRef\.current\) return/)
+  assert.match(mobilePageSource, /cameraAttemptRef\.current !== cameraAttempt/)
+  assert.match(mobilePageSource, /stream\?\.getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/)
+  assert.match(mobilePageSource, /decodeFromConstraints\(/)
+  assert.match(mobilePageSource, /facingMode: \{ ideal: 'environment' \}/)
+  assert.match(mobilePageSource, /mountedRef\.current = false[\s\S]*?stopCamera\(\)/)
+  assert.match(mobilePageSource, /NotAllowedError[\s\S]*CAMERA_PERMISSION_DENIED/)
+  assert.match(mobilePageSource, /NotFoundError[\s\S]*CAMERA_NOT_FOUND/)
+  assert.match(mobilePageSource, /Cho phép camera \/ Bật camera/)
+  assert.match(mobilePageSource, /Thử kết nối lại/)
+})

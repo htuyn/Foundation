@@ -96,3 +96,9 @@
 - Bổ sung hướng dẫn Vercel: Root Directory `.`; output `dist`; `VITE_API_BASE_URL` cần là URL HTTPS Render đầy đủ có `/api/v1`; QR origin dùng HTTPS frontend.
 - `npm run test:vercel-routing`: 4 passed; `npm run build`: đạt. Smoke test Vite preview mở trực tiếp `/scanner/mobile?...` trả HTTP 200 và nội dung `index.html`.
 - Chưa kiểm tra Root Directory/Environment Variables trên dashboard Vercel và chưa xác minh deployment production hoặc quét hai thiết bị. Smoke test là local preview, không thay thế kiểm tra rewrite trên Vercel hoặc API/WebSocket thực tế.
+
+## Tự khởi động camera mobile sau QR
+- `ScannerMobilePage` tự gọi ZXing `decodeFromConstraints` với ưu tiên `facingMode: environment` chỉ sau khi API join qua nonce hoàn tất và WebSocket báo `connected`; nút bật camera vẫn là fallback cho yêu cầu quyền của browser.
+- Thêm khóa camera đang khởi tạo, mã generation để bỏ kết quả mở camera muộn sau stop/unmount, dừng `IScannerControls` và toàn bộ media tracks, giữ cooldown quét. Mất kết nối dừng camera; có nút kết nối lại WebSocket hoặc thử xác thực lại khi lỗi tạm thời. Lỗi nonce/session terminal hướng người dùng tạo QR mới.
+- Không thay đổi API/WebSocket, payload, cơ chế ACK, xác thực hoặc kiểm tra thời hạn. UI báo lỗi quyền/tìm camera và cho nhập mã thủ công như trước.
+- Kết quả hiện tại: `npm run build` đạt; `npm run test:vercel-routing` đạt 5/5. Đây là build và source-contract tests, không mô phỏng getUserMedia thật; kiểm thử quyền grant/deny, camera vật lý, rời trang trên mobile và backend production chưa thể xác minh trong môi trường này.
