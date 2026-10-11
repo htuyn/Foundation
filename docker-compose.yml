@@ -1,0 +1,59 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      VITE_API_BASE_URL: /api/v1
+      VITE_SCANNER_MOBILE_BASE_URL: ${VITE_SCANNER_MOBILE_BASE_URL:-}
+      VITE_DEV_API_TARGET: http://backend:8000
+      DEV_HTTPS_CERT_FILE: ${DEV_HTTPS_CERT_FILE_DOCKER:-}
+      DEV_HTTPS_KEY_FILE: ${DEV_HTTPS_KEY_FILE_DOCKER:-}
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./certs:/certs:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-warehouse_db}
+      POSTGRES_USER: ${POSTGRES_USER:-warehouse_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-warehouse_user} -d ${POSTGRES_DB:-warehouse_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_NAME: ${APP_NAME:-Smart Warehouse API}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-warehouse_db}
+      POSTGRES_USER: ${POSTGRES_USER:-warehouse_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173}
+      SCANNER_SESSION_TTL_SECONDS: ${SCANNER_SESSION_TTL_SECONDS:-600}
+      SCANNER_QR_TTL_SECONDS: ${SCANNER_QR_TTL_SECONDS:-60}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

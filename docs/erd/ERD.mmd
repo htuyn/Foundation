@@ -1,0 +1,51 @@
+%% Mermaid flowchart notation is used to visually group ERD entities by domain.
+%% Each box is a table; relationship labels show cardinality and FK columns.
+flowchart LR
+    subgraph master["DANH MỤC DỮ LIỆU"]
+        direction TB
+        categories["<b>categories</b><br/>PK id: UUID<br/>UK name: TEXT"]
+        products["<b>products</b><br/>PK id: UUID<br/>UK sku: TEXT<br/>UK barcode: TEXT NULL<br/>FK category_id: UUID<br/>name, unit: TEXT<br/>cost: NUMERIC(14,2)<br/>min_stock: INTEGER<br/>status: TEXT<br/>created_at: TIMESTAMPTZ"]
+        warehouses["<b>warehouses</b><br/>PK id: UUID<br/>UK code: TEXT<br/>name, address: TEXT<br/>manager_name: TEXT<br/>status: TEXT"]
+        suppliers["<b>suppliers</b><br/>PK id: UUID<br/>UK code: TEXT<br/>name, phone: TEXT<br/>email, address: TEXT<br/>active: BOOLEAN"]
+    end
+
+    subgraph documents["PHIẾU NHẬP / XUẤT"]
+        direction TB
+        stock_documents["<b>stock_documents</b><br/>PK id: UUID<br/>UK code: TEXT<br/>type, status: TEXT<br/>FK warehouse_id: UUID<br/>partner, note: TEXT<br/>created_at: TIMESTAMPTZ"]
+        stock_document_items["<b>stock_document_items</b><br/>PK, FK document_id: UUID<br/>PK, FK product_id: UUID<br/>quantity: INTEGER<br/>unit_cost: NUMERIC(14,2)"]
+    end
+
+    subgraph inventory_domain["TỒN KHO & NHẬT KÝ"]
+        direction TB
+        inventory["<b>inventory</b><br/>PK, FK product_id: UUID<br/>PK, FK warehouse_id: UUID<br/>quantity: INTEGER<br/>location: TEXT"]
+        stock_movements["<b>stock_movements</b><br/>PK id: UUID<br/>code, movement_type: TEXT<br/>FK product_id, warehouse_id: UUID<br/>FK document_id: UUID NULL<br/>quantity_delta: INTEGER<br/>actor_name, source: TEXT<br/>created_at: TIMESTAMPTZ"]
+        audit_logs["<b>audit_logs</b><br/>PK id: UUID<br/>message, actor_name: TEXT<br/>created_at: TIMESTAMPTZ"]
+    end
+
+    subgraph scanner_domain["NGƯỜI DÙNG & QUÉT SMARTPHONE"]
+        direction TB
+        users["<b>users</b><br/>PK id: UUID<br/>UK email: TEXT<br/>name, role: TEXT<br/>active: BOOLEAN<br/>created_at: TIMESTAMPTZ"]
+        scanner_sessions["<b>scanner_sessions</b><br/>PK id: UUID<br/>mode, status: TEXT<br/>created_at, expires_at: TIMESTAMPTZ<br/>device_name: TEXT NULL<br/>connected_at, closed_at: TIMESTAMPTZ NULL"]
+        scanner_qr_tickets["<b>scanner_qr_tickets</b><br/>PK id: UUID<br/>FK session_id: UUID<br/>UK nonce_hash: TEXT<br/>created_at, expires_at: TIMESTAMPTZ<br/>consumed_at: TIMESTAMPTZ NULL"]
+        scan_events["<b>scan_events</b><br/>PK event_id: UUID<br/>FK session_id: UUID<br/>barcode, format: TEXT<br/>scanned_at: TIMESTAMPTZ<br/>device_id: TEXT NULL"]
+    end
+
+    categories -->|"1 : N · category_id"| products
+    products -->|"1 : N · product_id"| inventory
+    warehouses -->|"1 : N · warehouse_id"| inventory
+    warehouses -->|"1 : N · warehouse_id"| stock_documents
+    stock_documents -->|"1 : N · document_id"| stock_document_items
+    products -->|"1 : N · product_id"| stock_document_items
+    products -->|"1 : N · product_id"| stock_movements
+    warehouses -->|"1 : N · warehouse_id"| stock_movements
+    stock_documents -->|"0..1 document / movement"| stock_movements
+    stock_document_items -->|"0..1 source line / movement"| stock_movements
+    scanner_sessions -->|"1 : N · session_id"| scanner_qr_tickets
+    scanner_sessions -->|"1 : N · session_id"| scan_events
+
+    classDef entity fill:#ffffff,stroke:#64748b,stroke-width:1.5px,color:#172033;
+    class categories,products,warehouses,suppliers,stock_documents,stock_document_items,inventory,stock_movements,audit_logs,users,scanner_sessions,scanner_qr_tickets,scan_events entity;
+    style master fill:#eff6ff,stroke:#93c5fd,stroke-width:1.5px,color:#1e3a8a;
+    style documents fill:#fff7ed,stroke:#fdba74,stroke-width:1.5px,color:#7c2d12;
+    style inventory_domain fill:#ecfdf5,stroke:#86efac,stroke-width:1.5px,color:#14532d;
+    style scanner_domain fill:#f5f3ff,stroke:#c4b5fd,stroke-width:1.5px,color:#4c1d95;
