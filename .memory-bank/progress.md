@@ -89,3 +89,10 @@
 - Backend runtime hiện trả `/health/ready` HTTP 200; OpenAPI có `POST /api/v1/scanner/sessions` và `POST /api/v1/scanner/sessions/{session_id}/qr`. Endpoint tạo session trả session ID/owner token/thời hạn; endpoint QR trả nonce dùng một lần và thời hạn. Frontend tự ghép URL mobile, không có QR image/URL field từ backend.
 - Nguyên nhân QR chưa xuất hiện: `VITE_SCANNER_MOBILE_BASE_URL` chưa cấu hình, frontend đang mở qua HTTP ở port 5173 nên fallback `window.location.origin` bị `baseUrlError`; QR effect không gọi endpoint nonce hoặc thư viện `qrcode`. Không bỏ qua kiểm tra này.
 - Chứng chỉ hiện có SAN cho `192.168.16.109`, nhưng HTTPS port 5174 chưa chạy và Windows network profile là Public. Không mở thêm LAN server trên mạng Public; cần chuyển mạng sang Private chỉ khi tin cậy, chạy `scripts/start-lan-vite.ps1`, tin cậy CA trên desktop/điện thoại rồi mở URL HTTPS LAN. Cảnh báo block URL được gắn role alert. Chưa tạo QR thật hoặc xác nhận điện thoại truy cập được.
+
+## Sửa lỗi deep-link scanner trên Vercel
+- Nguyên nhân tại source: repo frontend ở root, đã có React Router route `/scanner/mobile` và parser đầy đủ query/hash QR, nhưng thiếu `vercel.json` SPA rewrite cho direct navigation.
+- Đã thêm `vercel.json` rewrite catch-all về `/index.html`; thêm Node built-in tests kiểm tra fallback, route React, tham số/expiry, yêu cầu join nonce và chuyển WSS theo HTTPS. Không thay đổi backend auth/nonce/session expiry hoặc thuật toán scanner.
+- Bổ sung hướng dẫn Vercel: Root Directory `.`; output `dist`; `VITE_API_BASE_URL` cần là URL HTTPS Render đầy đủ có `/api/v1`; QR origin dùng HTTPS frontend.
+- `npm run test:vercel-routing`: 4 passed; `npm run build`: đạt. Smoke test Vite preview mở trực tiếp `/scanner/mobile?...` trả HTTP 200 và nội dung `index.html`.
+- Chưa kiểm tra Root Directory/Environment Variables trên dashboard Vercel và chưa xác minh deployment production hoặc quét hai thiết bị. Smoke test là local preview, không thay thế kiểm tra rewrite trên Vercel hoặc API/WebSocket thực tế.

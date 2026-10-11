@@ -45,5 +45,12 @@
 
 Backend lookup barcode riêng bằng `GET /api/v1/products/lookup?barcode=...`, không nhầm barcode với SKU; lookup `?code=...` cũ vẫn tìm cả hai để tương thích. Scanner owner/device token dạng capability được hash ở DB; nonce QR dùng một lần, `eventId` idempotent, `/leave` thu hồi device token. Backend lưu/broadcast scan event; desktop lookup sản phẩm rồi cập nhật state của form nhập đang mở. Chi tiết phiếu chưa được ghi PostgreSQL sau từng scan: form persist thành phiếu nháp khi người dùng bấm lưu; đây là giới hạn hiện tại. Scanner session chưa có liên kết DB tới document ID; callback chỉ ràng buộc phiên với form phía frontend. Hiện chưa có authentication/authorization người dùng. Rate limiter và WebSocket registry process-local; nhiều worker cần shared store/pub-sub. PostgreSQL integration tests chỉ chạy khi `RUN_POSTGRES_INTEGRATION_TESTS=1` và DB sẵn sàng. Camera/WebSocket hai thiết bị thật chưa được xác minh.
 
+## Triển khai frontend trên Vercel
+
+- Frontend Vite nằm tại thư mục gốc repository (cùng cấp `package.json`, `vite.config.ts`, `index.html`); Vercel Project nên đặt **Root Directory** là `.` và Build Output Directory là `dist`.
+- `vercel.json` rewrite các đường dẫn SPA về `/index.html`, để URL QR `/scanner/mobile?...` tải ứng dụng trước khi React Router xử lý route.
+- Trong Vercel Project Settings → Environment Variables, cấu hình `VITE_API_BASE_URL` bằng URL HTTPS của backend Render kèm prefix `/api/v1` (không dùng `localhost` hoặc `/api/v1` tương đối cho production). Nếu `VITE_SCANNER_MOBILE_BASE_URL` được đặt, giá trị phải là origin HTTPS của frontend Vercel, không kèm path/query; nếu bỏ trống QR dùng origin của trang đang mở.
+- Các biến `VITE_*` được nhúng lúc build; sau khi thay đổi cần redeploy frontend. Không thay đổi xác thực phiên: backend vẫn kiểm tra owner/device token, nonce dùng một lần và hạn phiên/QR.
+
 
 
