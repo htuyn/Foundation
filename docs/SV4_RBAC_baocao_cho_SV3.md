@@ -6,7 +6,7 @@
 
 ## 1. Tóm tắt những gì SV4 đã làm
 
-SV4 đã tự xây dựng toàn bộ RBAC middleware (theo thỏa thuận "SV3 chuyển phần này sang SV4").  
+SV4 đã tự xây dựng toàn bộ RBAC middleware.  
 Code nằm trong repo tại: `backend/app/core/rbac.py`
 
 ---
