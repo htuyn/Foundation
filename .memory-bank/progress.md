@@ -116,3 +116,11 @@
 - Fail-safe: production build không tạo QR nếu thiếu `VITE_SCANNER_MOBILE_BASE_URL`; cấu hình này phải là origin HTTPS public canonical, chỉ trong Production scope. Development vẫn fallback origin. Không bypass/tắt Deployment Protection hoặc thay đổi auth scanner.
 - Kiểm thử lần cập nhật: `npm run build` đạt; `npm run test:vercel-routing` đạt 7/7; backend `python -m pytest -q -p no:asyncio` đạt 23 passed, 7 skipped, 1 deprecation warning; `git diff --check` sạch. `package.json` không có lint script. Không kiểm tra trực tiếp Production Vercel/mobile ẩn danh; PostgreSQL-specific integration tests vẫn skip.
 - Deploy Vercel sau khi đặt `VITE_SCANNER_MOBILE_BASE_URL` đúng origin và kiểm tra Deployment Protection. Không có backend/schema change, không cần Render deployment/migration. Nếu bật Protection trên Production, cần đánh giá vì gate ở cấp deployment có thể chặn toàn website; frontend hiện chưa có tài khoản đăng nhập riêng.
+
+
+
+## SV1 - Hạ tầng & Dữ liệu
+- [x] **CV01: Thiết kế & Cấu hình hạ tầng mạng Kho An Phát (Packet Tracer)**
+  - Đã hoàn thành sơ đồ mạng mô phỏng (`docs/HeThongQuanLyKho.pkt`).
+  - Đã kiểm thử ping thông mạng giữa máy quét Wi-Fi (Point-1) và App-Server (`192.168.1.10`) đạt 100% (Minh chứng MC01).
+- [/] **CV02: Thiết kế Cơ sở dữ liệu & ERD** (Đang triển khai)
