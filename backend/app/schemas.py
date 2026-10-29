@@ -61,7 +61,7 @@ class SupplierInput(ApiSchema):
 class UserInput(ApiSchema):
     name: str = Field(min_length=1, max_length=180)
     email: str = Field(min_length=3, max_length=254)
-    role: Literal["Quản trị viên", "Quản lý kho", "Nhân viên kho"] = "Nhân viên kho"
+    role: Literal["Quản trị viên", "Quản lý kho", "Nhân viên kho", "Chỉ xem"] = "Nhân viên kho"
     active: bool = True
 
 

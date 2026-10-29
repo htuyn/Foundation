@@ -7,17 +7,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ApiError
+from app.core.rbac import CurrentUser, require_permission
 from app.db.session import get_db
 from app.models import AuditLog, Category, Inventory, Product, StockDocument, StockDocumentItem, StockMovement, Supplier, User, Warehouse
 from app.schemas import CategoryCreate, InventoryAdjustmentInput, ProductInput, SupplierInput, UserInput, WarehouseInput
 from app.services.serialization import audit_dict, product_dict, supplier_dict, user_dict, warehouse_dict
 
 router = APIRouter()
-ACTOR = "Hệ thống"
 
 
-def add_audit(db: Session, message: str) -> None:
-    db.add(AuditLog(message=message, actor_name=ACTOR))
+def add_audit(db: Session, message: str, actor: str = "Hệ thống") -> None:
+    db.add(AuditLog(message=message, actor_name=actor))
 
 
 def integrity_error(error: IntegrityError) -> ApiError:
@@ -47,51 +47,49 @@ def get_bootstrap(db: Session = Depends(get_db)):
     return bootstrap_state(db)
 
 
+
 @router.get("/categories")
-def list_categories(db: Session = Depends(get_db)):
+def list_categories(user: CurrentUser, db: Session = Depends(get_db)):
     return [{"id": str(item.id), "name": item.name} for item in db.scalars(select(Category).order_by(Category.name)).all()]
 
 
 @router.post("/categories", status_code=201)
-def create_category(payload: CategoryCreate, db: Session = Depends(get_db)):
+def create_category(payload: CategoryCreate, user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            category = Category(name=payload.name)
-            db.add(category)
-            db.flush()
-            add_audit(db, f"Tạo danh mục {category.name}")
+        category = Category(name=payload.name)
+        db.add(category)
+        db.flush()
+        add_audit(db, f"Tạo danh mục {category.name}", user.name)
         return {"id": str(category.id), "name": category.name}
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
 @router.patch("/categories/by-name/{name}")
-def rename_category(name: str, payload: CategoryCreate, db: Session = Depends(get_db)):
+def rename_category(name: str, payload: CategoryCreate, user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            category = db.scalar(select(Category).where(func.lower(Category.name) == name.lower()).with_for_update())
-            if not category:
-                raise ApiError(404, "CATEGORY_NOT_FOUND", "Không tìm thấy danh mục.")
-            previous = category.name
-            category.name = payload.name
-            add_audit(db, f"Cập nhật danh mục {payload.name}")
-            db.flush()
+        category = db.scalar(select(Category).where(func.lower(Category.name) == name.lower()).with_for_update())
+        if not category:
+            raise ApiError(404, "CATEGORY_NOT_FOUND", "Không tìm thấy danh mục.")
+        previous = category.name
+        category.name = payload.name
+        add_audit(db, f"Cập nhật danh mục {payload.name}", user.name)
+        db.flush()
         return {"id": str(category.id), "name": category.name, "previousName": previous}
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
 @router.delete("/categories/by-name/{name}", status_code=204)
-def delete_category(name: str, db: Session = Depends(get_db)):
+def delete_category(name: str, user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            category = db.scalar(select(Category).where(func.lower(Category.name) == name.lower()).with_for_update())
-            if not category:
-                raise ApiError(404, "CATEGORY_NOT_FOUND", "Không tìm thấy danh mục.")
-            if db.scalar(select(Product.id).where(Product.category_id == category.id).limit(1)):
-                raise ApiError(409, "CATEGORY_IN_USE", "Danh mục đang được sản phẩm sử dụng, không thể xóa.")
-            db.delete(category)
-            add_audit(db, f"Xóa danh mục {category.name}")
+        category = db.scalar(select(Category).where(func.lower(Category.name) == name.lower()).with_for_update())
+        if not category:
+            raise ApiError(404, "CATEGORY_NOT_FOUND", "Không tìm thấy danh mục.")
+        if db.scalar(select(Product.id).where(Product.category_id == category.id).limit(1)):
+            raise ApiError(409, "CATEGORY_IN_USE", "Danh mục đang được sản phẩm sử dụng, không thể xóa.")
+        db.delete(category)
+        add_audit(db, f"Xóa danh mục {category.name}", user.name)
     except IntegrityError as error:
         raise integrity_error(error) from error
 
@@ -102,6 +100,7 @@ def list_products(
     category: str | None = None,
     page: int = Query(1, ge=1),
     pageSize: int = Query(100, ge=1, le=500),
+    user: User = Depends(require_permission),
     db: Session = Depends(get_db),
 ):
     query = select(Product).options(selectinload(Product.category))
@@ -118,6 +117,7 @@ def list_products(
 def lookup_product(
     code: str | None = Query(default=None, min_length=1, max_length=160),
     barcode: str | None = Query(default=None, min_length=1, max_length=160),
+    user: User = Depends(require_permission),
     db: Session = Depends(get_db),
 ):
     if (code is None) == (barcode is None):
@@ -148,12 +148,12 @@ def generate_product_sku(db: Session) -> str:
 
 
 @router.get("/products/next-sku")
-def next_product_sku(db: Session = Depends(get_db)):
+def next_product_sku(user: CurrentUser, db: Session = Depends(get_db)):
     return {"sku": generate_product_sku(db)}
 
 
 @router.get("/products/{product_id}")
-def get_product(product_id: UUID, db: Session = Depends(get_db)):
+def get_product(product_id: UUID, user: CurrentUser, db: Session = Depends(get_db)):
     product = db.scalar(select(Product).options(selectinload(Product.category)).where(Product.id == product_id))
     if not product:
         raise ApiError(404, "PRODUCT_NOT_FOUND", "Không tìm thấy sản phẩm.")
@@ -172,199 +172,204 @@ def assign_product(product: Product, payload: ProductInput, category: Category) 
 
 
 @router.post("/products", status_code=201)
-def create_product(payload: ProductInput, db: Session = Depends(get_db)):
+def create_product(payload: ProductInput, user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            category = get_category(db, payload.category)
-            sku = payload.sku or generate_product_sku(db)
-            product = Product()
-            assign_product(product, payload.model_copy(update={"sku": sku}), category)
-            db.add(product)
-            db.flush()
-            add_audit(db, f"Tạo sản phẩm {product.name}")
-            db.flush()
-            db.refresh(product)
+        category = get_category(db, payload.category)
+        sku = payload.sku or generate_product_sku(db)
+        product = Product()
+        assign_product(product, payload.model_copy(update={"sku": sku}), category)
+        db.add(product)
+        db.flush()
+        add_audit(db, f"Tạo sản phẩm {product.name}", user.name)
+        db.flush()
+        db.refresh(product)
         return product_dict(product)
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
 @router.put("/products/{product_id}")
-def update_product(product_id: UUID, payload: ProductInput, db: Session = Depends(get_db)):
+def update_product(product_id: UUID, payload: ProductInput, user: CurrentUser, db: Session = Depends(get_db)):
     if not payload.sku:
         raise ApiError(422, "SKU_REQUIRED", "SKU là bắt buộc khi cập nhật sản phẩm.")
     try:
-        with db.begin():
-            product = db.scalar(select(Product).where(Product.id == product_id).with_for_update())
-            if not product:
-                raise ApiError(404, "PRODUCT_NOT_FOUND", "Không tìm thấy sản phẩm.")
-            category = get_category(db, payload.category)
-            assign_product(product, payload, category)
-            add_audit(db, f"Cập nhật sản phẩm {product.name}")
-            db.flush()
-            db.refresh(product)
+        product = db.scalar(select(Product).where(Product.id == product_id).with_for_update())
+        if not product:
+            raise ApiError(404, "PRODUCT_NOT_FOUND", "Không tìm thấy sản phẩm.")
+        category = get_category(db, payload.category)
+        assign_product(product, payload, category)
+        add_audit(db, f"Cập nhật sản phẩm {product.name}", user.name)
+        db.flush()
+        db.refresh(product)
         return product_dict(product)
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
 @router.delete("/products/{product_id}", status_code=204)
-def delete_product(product_id: UUID, db: Session = Depends(get_db)):
-    with db.begin():
-        product = db.scalar(select(Product).where(Product.id == product_id).with_for_update())
-        if not product:
-            raise ApiError(404, "PRODUCT_NOT_FOUND", "Không tìm thấy sản phẩm.")
-        has_history = db.scalar(select(StockMovement.id).where(StockMovement.product_id == product_id).limit(1))
-        has_document = db.scalar(select(StockDocumentItem.document_id).where(StockDocumentItem.product_id == product_id).limit(1))
-        if has_history or has_document:
-            raise ApiError(409, "PRODUCT_HAS_HISTORY", "Sản phẩm đã được tham chiếu trong lịch sử hoặc phiếu; hãy ngừng kinh doanh thay vì xóa.")
-        db.execute(delete(Inventory).where(Inventory.product_id == product_id))
-        db.delete(product)
-        add_audit(db, f"Xóa sản phẩm {product.name}")
+def delete_product(product_id: UUID, user: CurrentUser, db: Session = Depends(get_db)):
+    product = db.scalar(select(Product).where(Product.id == product_id).with_for_update())
+    if not product:
+        raise ApiError(404, "PRODUCT_NOT_FOUND", "Không tìm thấy sản phẩm.")
+    has_history = db.scalar(select(StockMovement.id).where(StockMovement.product_id == product_id).limit(1))
+    has_document = db.scalar(select(StockDocumentItem.document_id).where(StockDocumentItem.product_id == product_id).limit(1))
+    if has_history or has_document:
+        raise ApiError(409, "PRODUCT_HAS_HISTORY", "Sản phẩm đã được tham chiếu trong lịch sử hoặc phiếu; hãy ngừng kinh doanh thay vì xóa.")
+    db.execute(delete(Inventory).where(Inventory.product_id == product_id))
+    db.delete(product)
+    add_audit(db, f"Xóa sản phẩm {product.name}", user.name)
 
 
 @router.get("/warehouses")
-def list_warehouses(db: Session = Depends(get_db)):
+def list_warehouses(user: CurrentUser, db: Session = Depends(get_db)):
     return [warehouse_dict(item) for item in db.scalars(select(Warehouse).order_by(Warehouse.name)).all()]
 
 
 @router.post("/warehouses", status_code=201)
-def create_warehouse(payload: WarehouseInput, db: Session = Depends(get_db)):
+def create_warehouse(payload: WarehouseInput, user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            warehouse = Warehouse(code=payload.code, name=payload.name, address=payload.address, manager_name=payload.manager, status=payload.status)
-            db.add(warehouse)
-            db.flush()
-            add_audit(db, f"Tạo kho {warehouse.name}")
+        warehouse = Warehouse(code=payload.code, name=payload.name, address=payload.address, manager_name=payload.manager, status=payload.status)
+        db.add(warehouse)
+        db.flush()
+        add_audit(db, f"Tạo kho {warehouse.name}", user.name)
         return warehouse_dict(warehouse)
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
 @router.put("/warehouses/{warehouse_id}")
-def update_warehouse(warehouse_id: UUID, payload: WarehouseInput, db: Session = Depends(get_db)):
+def update_warehouse(warehouse_id: UUID, payload: WarehouseInput, user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            warehouse = db.scalar(select(Warehouse).where(Warehouse.id == warehouse_id).with_for_update())
-            if not warehouse:
-                raise ApiError(404, "WAREHOUSE_NOT_FOUND", "Không tìm thấy kho.")
-            warehouse.code = payload.code
-            warehouse.name = payload.name
-            warehouse.address = payload.address
-            warehouse.manager_name = payload.manager
-            warehouse.status = payload.status
-            add_audit(db, f"Cập nhật kho {warehouse.name}")
-            db.flush()
+        warehouse = db.scalar(select(Warehouse).where(Warehouse.id == warehouse_id).with_for_update())
+        if not warehouse:
+            raise ApiError(404, "WAREHOUSE_NOT_FOUND", "Không tìm thấy kho.")
+        warehouse.code = payload.code
+        warehouse.name = payload.name
+        warehouse.address = payload.address
+        warehouse.manager_name = payload.manager
+        warehouse.status = payload.status
+        add_audit(db, f"Cập nhật kho {warehouse.name}", user.name)
+        db.flush()
         return warehouse_dict(warehouse)
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
 @router.delete("/warehouses/{warehouse_id}", status_code=204)
-def delete_warehouse(warehouse_id: UUID, db: Session = Depends(get_db)):
-    with db.begin():
-        warehouse = db.scalar(select(Warehouse).where(Warehouse.id == warehouse_id).with_for_update())
-        if not warehouse:
-            raise ApiError(404, "WAREHOUSE_NOT_FOUND", "Không tìm thấy kho.")
-        has_inventory = db.scalar(select(Inventory.product_id).where(Inventory.warehouse_id == warehouse_id).limit(1))
-        has_document = db.scalar(select(StockDocument.id).where(StockDocument.warehouse_id == warehouse_id).limit(1))
-        has_movement = db.scalar(select(StockMovement.id).where(StockMovement.warehouse_id == warehouse_id).limit(1))
-        if has_inventory or has_document or has_movement:
-            raise ApiError(409, "WAREHOUSE_IN_USE", "Kho đã có tồn kho, phiếu hoặc giao dịch; hãy tạm ngưng thay vì xóa.")
-        db.delete(warehouse)
-        add_audit(db, f"Xóa kho {warehouse.name}")
+def delete_warehouse(warehouse_id: UUID, user: CurrentUser, db: Session = Depends(get_db)):
+    warehouse = db.scalar(select(Warehouse).where(Warehouse.id == warehouse_id).with_for_update())
+    if not warehouse:
+        raise ApiError(404, "WAREHOUSE_NOT_FOUND", "Không tìm thấy kho.")
+    has_inventory = db.scalar(select(Inventory.product_id).where(Inventory.warehouse_id == warehouse_id).limit(1))
+    has_document = db.scalar(select(StockDocument.id).where(StockDocument.warehouse_id == warehouse_id).limit(1))
+    has_movement = db.scalar(select(StockMovement.id).where(StockMovement.warehouse_id == warehouse_id).limit(1))
+    if has_inventory or has_document or has_movement:
+        raise ApiError(409, "WAREHOUSE_IN_USE", "Kho đã có tồn kho, phiếu hoặc giao dịch; hãy tạm ngưng thay vì xóa.")
+    db.delete(warehouse)
+    add_audit(db, f"Xóa kho {warehouse.name}", user.name)
 
 
 @router.get("/suppliers")
-def list_suppliers(db: Session = Depends(get_db)):
+def list_suppliers(user: CurrentUser, db: Session = Depends(get_db)):
     return [supplier_dict(item) for item in db.scalars(select(Supplier).order_by(Supplier.name)).all()]
 
 
 @router.post("/suppliers", status_code=201)
-def create_supplier(payload: SupplierInput, db: Session = Depends(get_db)):
+def create_supplier(payload: SupplierInput, user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            supplier = Supplier(**payload.model_dump())
-            db.add(supplier)
-            db.flush()
-            add_audit(db, f"Tạo nhà cung cấp {supplier.name}")
+        supplier = Supplier(**payload.model_dump())
+        db.add(supplier)
+        db.flush()
+        add_audit(db, f"Tạo nhà cung cấp {supplier.name}", user.name)
         return supplier_dict(supplier)
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
 @router.put("/suppliers/{supplier_id}")
-def update_supplier(supplier_id: UUID, payload: SupplierInput, db: Session = Depends(get_db)):
+def update_supplier(supplier_id: UUID, payload: SupplierInput, user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            supplier = db.scalar(select(Supplier).where(Supplier.id == supplier_id).with_for_update())
-            if not supplier:
-                raise ApiError(404, "SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp.")
-            for field, value in payload.model_dump().items():
-                setattr(supplier, field, value)
-            add_audit(db, f"Cập nhật nhà cung cấp {supplier.name}")
-            db.flush()
+        supplier = db.scalar(select(Supplier).where(Supplier.id == supplier_id).with_for_update())
+        if not supplier:
+            raise ApiError(404, "SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp.")
+        for field, value in payload.model_dump().items():
+            setattr(supplier, field, value)
+        add_audit(db, f"Cập nhật nhà cung cấp {supplier.name}", user.name)
+        db.flush()
         return supplier_dict(supplier)
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
 @router.delete("/suppliers/{supplier_id}", status_code=204)
-def delete_supplier(supplier_id: UUID, db: Session = Depends(get_db)):
-    with db.begin():
-        supplier = db.scalar(select(Supplier).where(Supplier.id == supplier_id).with_for_update())
-        if not supplier:
-            raise ApiError(404, "SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp.")
-        referenced = db.scalar(
-            select(StockDocument.id)
-            .where(
-                StockDocument.type == "Nhập kho",
-                or_(StockDocument.supplier_id == supplier_id, StockDocument.partner == supplier.name),
-            )
-            .limit(1)
+def delete_supplier(supplier_id: UUID, user: CurrentUser, db: Session = Depends(get_db)):
+    supplier = db.scalar(select(Supplier).where(Supplier.id == supplier_id).with_for_update())
+    if not supplier:
+        raise ApiError(404, "SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp.")
+    referenced = db.scalar(
+        select(StockDocument.id)
+        .where(
+            StockDocument.type == "Nhập kho",
+            or_(StockDocument.supplier_id == supplier_id, StockDocument.partner == supplier.name),
         )
-        if referenced:
-            raise ApiError(409, "SUPPLIER_HAS_HISTORY", "Nhà cung cấp đã có phiếu nhập tham chiếu; không thể xóa.")
-        db.delete(supplier)
-        add_audit(db, f"Xóa nhà cung cấp {supplier.name}")
+        .limit(1)
+    )
+    if referenced:
+        raise ApiError(409, "SUPPLIER_HAS_HISTORY", "Nhà cung cấp đã có phiếu nhập tham chiếu; không thể xóa.")
+    db.delete(supplier)
+    add_audit(db, f"Xóa nhà cung cấp {supplier.name}", user.name)
 
 
 @router.get("/users")
-def list_users(db: Session = Depends(get_db)):
+def list_users(user: CurrentUser, db: Session = Depends(get_db)):
     return [user_dict(item) for item in db.scalars(select(User).order_by(User.name)).all()]
 
 
 @router.post("/users", status_code=201)
-def create_user(payload: UserInput, db: Session = Depends(get_db)):
+def create_user(payload: UserInput, current_user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            user = User(**payload.model_dump())
-            db.add(user)
-            db.flush()
-            add_audit(db, f"Tạo tài khoản {user.name}")
-        return user_dict(user)
+        new_user = User(**payload.model_dump())
+        db.add(new_user)
+        db.flush()
+        add_audit(db, f"Tạo tài khoản {new_user.name}", current_user.name)
+        return user_dict(new_user)
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
 @router.put("/users/{user_id}")
-def update_user(user_id: UUID, payload: UserInput, db: Session = Depends(get_db)):
+def update_user(user_id: UUID, payload: UserInput, current_user: CurrentUser, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            user = db.scalar(select(User).where(User.id == user_id).with_for_update())
-            if not user:
-                raise ApiError(404, "USER_NOT_FOUND", "Không tìm thấy người dùng.")
-            for field, value in payload.model_dump().items():
-                setattr(user, field, value)
-            add_audit(db, f"Cập nhật tài khoản {user.name}")
-            db.flush()
-        return user_dict(user)
+        target_user = db.scalar(select(User).where(User.id == user_id).with_for_update())
+        if not target_user:
+            raise ApiError(404, "USER_NOT_FOUND", "Không tìm thấy người dùng.")
+        for field, value in payload.model_dump().items():
+            setattr(target_user, field, value)
+        add_audit(db, f"Cập nhật tài khoản {target_user.name}", current_user.name)
+        db.flush()
+        return user_dict(target_user)
     except IntegrityError as error:
         raise integrity_error(error) from error
 
 
+@router.delete("/users/{user_id}", status_code=204)
+def deactivate_user(user_id: UUID, current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Vô hiệu hoá tài khoản (soft-delete). Không xoá hẳn để bảo toàn Audit Log.
+
+    Chỉ Quản trị viên / Quản lý kho mới được thực hiện (RBAC DELETE).
+    Không thể tự vô hiệu hoá chính mình.
+    """
+    target_user = db.scalar(select(User).where(User.id == user_id).with_for_update())
+    if not target_user:
+        raise ApiError(404, "USER_NOT_FOUND", "Không tìm thấy người dùng.")
+    if current_user.id is not None and target_user.id == current_user.id:
+        raise ApiError(409, "CANNOT_DEACTIVATE_SELF", "Không thể tự vô hiệu hoá tài khoản của chính mình.")
+    target_user.active = False
+    add_audit(db, f"Vô hiệu hoá tài khoản {target_user.name} (role: {target_user.role})", current_user.name)
+
+
 @router.get("/inventory")
-def list_inventory(warehouseId: UUID | None = None, db: Session = Depends(get_db)):
+def list_inventory(warehouseId: UUID | None = None, user: User = Depends(require_permission), db: Session = Depends(get_db)):
     query = select(Inventory)
     if warehouseId:
         query = query.where(Inventory.warehouse_id == warehouseId)
@@ -375,37 +380,36 @@ def list_inventory(warehouseId: UUID | None = None, db: Session = Depends(get_db
 
 
 @router.post("/inventory/adjust")
-def adjust_inventory(payload: InventoryAdjustmentInput, db: Session = Depends(get_db)):
-    with db.begin():
-        product = db.scalar(select(Product).where(Product.id == payload.productId).with_for_update())
-        warehouse = db.scalar(select(Warehouse).where(Warehouse.id == payload.warehouseId).with_for_update())
-        if not product or not warehouse:
-            raise ApiError(404, "INVENTORY_REFERENCE_NOT_FOUND", "Không tìm thấy sản phẩm hoặc kho.")
-        row = db.scalar(
-            select(Inventory)
-            .where(Inventory.product_id == payload.productId, Inventory.warehouse_id == payload.warehouseId)
-            .with_for_update()
-        )
-        current = row.quantity if row else 0
-        if current + payload.quantity < 0:
-            raise ApiError(409, "INSUFFICIENT_STOCK", f"Điều chỉnh sẽ làm tồn kho âm (hiện có {current}).")
-        code = f"DC-{datetime.now(timezone.utc).year}-{uuid4().hex[:8].upper()}"
-        if row:
-            row.quantity = current + payload.quantity
-        else:
-            db.add(Inventory(product_id=payload.productId, warehouse_id=payload.warehouseId, quantity=payload.quantity, location="Khu mới"))
-        movement = StockMovement(
-            code=code,
-            movement_type="Điều chỉnh",
-            product_id=payload.productId,
-            warehouse_id=payload.warehouseId,
-            quantity_delta=payload.quantity,
-            actor_name=ACTOR,
-            source=payload.reason,
-        )
-        db.add(movement)
-        add_audit(db, f"Điều chỉnh tồn kho {code}: {payload.reason}")
-        db.flush()
+def adjust_inventory(payload: InventoryAdjustmentInput, user: CurrentUser, db: Session = Depends(get_db)):
+    product = db.scalar(select(Product).where(Product.id == payload.productId).with_for_update())
+    warehouse = db.scalar(select(Warehouse).where(Warehouse.id == payload.warehouseId).with_for_update())
+    if not product or not warehouse:
+        raise ApiError(404, "INVENTORY_REFERENCE_NOT_FOUND", "Không tìm thấy sản phẩm hoặc kho.")
+    row = db.scalar(
+        select(Inventory)
+        .where(Inventory.product_id == payload.productId, Inventory.warehouse_id == payload.warehouseId)
+        .with_for_update()
+    )
+    current = row.quantity if row else 0
+    if current + payload.quantity < 0:
+        raise ApiError(409, "INSUFFICIENT_STOCK", f"Điều chỉnh sẽ làm tồn kho âm (hiện có {current}).")
+    code = f"DC-{datetime.now(timezone.utc).year}-{uuid4().hex[:8].upper()}"
+    if row:
+        row.quantity = current + payload.quantity
+    else:
+        db.add(Inventory(product_id=payload.productId, warehouse_id=payload.warehouseId, quantity=payload.quantity, location="Khu mới"))
+    movement = StockMovement(
+        code=code,
+        movement_type="Điều chỉnh",
+        product_id=payload.productId,
+        warehouse_id=payload.warehouseId,
+        quantity_delta=payload.quantity,
+        actor_name=user.name,
+        source=payload.reason,
+    )
+    db.add(movement)
+    add_audit(db, f"Điều chỉnh tồn kho {code}: {payload.reason}", user.name)
+    db.flush()
     return {
         "id": str(movement.id), "code": movement.code, "type": movement.movement_type,
         "productId": str(movement.product_id), "warehouseId": str(movement.warehouse_id),
@@ -414,12 +418,48 @@ def adjust_inventory(payload: InventoryAdjustmentInput, db: Session = Depends(ge
     }
 
 
+@router.get("/audit-logs")
+def list_audit_logs(
+    q: str | None = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(200, ge=1, le=1000),
+    user: User = Depends(require_permission),
+    db: Session = Depends(get_db),
+):
+    """Trả về Nhật ký hoạt động (Audit Log).
+
+    Endpoint này dùng chung với SV3 – phản ánh mọi hành động:
+    - Tạo/sửa/xóa phiếu, sản phẩm, kho, nhà cung cấp, tài khoản
+    - RBAC từ chối 403 (do SV4 ghi)
+    - Trùng khóa 409, xuất vượt tồn 400 (SV3 sẽ bổ sung)
+    """
+    query = select(AuditLog)
+    if q:
+        pattern = f"%{q.strip()}%"
+        query = query.where(
+            AuditLog.message.ilike(pattern) | AuditLog.actor_name.ilike(pattern)
+        )
+    rows = db.scalars(
+        query.order_by(AuditLog.created_at.desc()).offset((page - 1) * pageSize).limit(pageSize)
+    ).all()
+    return [
+        {
+            "id": str(item.id),
+            "message": item.message,
+            "actorName": item.actor_name,
+            "createdAt": item.created_at.isoformat(),
+        }
+        for item in rows
+    ]
+
+
 @router.get("/transactions")
 def list_transactions(
     type: str | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
     pageSize: int = Query(100, ge=1, le=500),
+    user: User = Depends(require_permission),
     db: Session = Depends(get_db),
 ):
     query = select(StockMovement)

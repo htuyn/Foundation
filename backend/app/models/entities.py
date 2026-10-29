@@ -94,7 +94,7 @@ class User(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     __table_args__ = (
-        CheckConstraint("role IN ('Quản trị viên', 'Quản lý kho', 'Nhân viên kho')", name="ck_users_role"),
+        CheckConstraint("role IN ('Quản trị viên', 'Quản lý kho', 'Nhân viên kho', 'Chỉ xem')", name="ck_users_role"),
         Index("uq_users_email_lower", func.lower(email), unique=True),
     )
 
