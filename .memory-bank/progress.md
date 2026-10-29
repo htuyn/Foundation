@@ -121,6 +121,6 @@
 
 ## SV1 - Hạ tầng & Dữ liệu
 - [x] **CV01: Thiết kế & Cấu hình hạ tầng mạng Kho An Phát (Packet Tracer)**
-  - Đã hoàn thành sơ đồ mạng mô phỏng (`docs/HeThongQuanLyKho.pkt`).
+  - Đã hoàn thành sơ đồ mạng mô phỏng (`docs/KhoHang_AnPhat.pkt`).
   - Đã kiểm thử ping thông mạng giữa máy quét Wi-Fi (Point-1) và App-Server (`192.168.1.10`) đạt 100% (Minh chứng MC01).
 - [/] **CV02: Thiết kế Cơ sở dữ liệu & ERD** (Đang triển khai)
