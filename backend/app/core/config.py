@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     postgres_user: str = "warehouse_user"
     postgres_password: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173"
+    cors_origin_regex: str | None = None
     scanner_session_ttl_seconds: int = 600
     scanner_qr_ttl_seconds: int = 60
 

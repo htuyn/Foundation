@@ -159,3 +159,11 @@
 - Mobile giữ scan chưa ACK trong bộ nhớ và retry cùng `eventId` khi reconnect/timeout. Backend đã lưu idempotent và owner replay event đã lưu; không đổi API/schema/bảo mật. Outbox không sống qua reload/đóng tab.
 - Camera yêu cầu lý tưởng 1280×720; TRY_HARDER, focus liên tục và zoom chỉ khi có capability; re-arm 350 ms. Không kết luận hiệu năng nhanh hơn khi chưa đo.
 - Kiểm thử cuối: `npm run build` đạt; `npm run test:vercel-routing` 9/9 đạt; `python -m pytest -q -p no:asyncio` 25 passed, 7 skipped. Pytest mặc định gặp pytest-asyncio collection INTERNALERROR; 7 test bị skip theo cấu hình DB. Chưa thử thiết bị Android/iPhone hoặc mạng chập chờn thật.
+
+## Sửa lỗi CORS Vercel Preview/Render (2026-11-02)
+- Nguyên nhân source: FastAPI chỉ cấu hình `allow_origins=settings.cors_origin_list`; Settings có `CORS_ORIGINS` nhưng không có regex, nên origin Vercel Preview ngoài allowlist không được phản hồi CORS. Middleware CORS chỉ khai báo một lần; không tìm thấy `render.yaml` hoặc override production trong repository.
+- Thêm `cors_origin_regex: str | None = None` để Pydantic Settings đọc `CORS_ORIGIN_REGEX`, dùng đồng thời allowlist và regex trong middleware. Giữ `allow_credentials=False`, methods/headers hiện tại và mặc định localhost. Docker Compose chuyển tiếp biến tùy chọn.
+- Regex Render giới hạn vào `^https://foundation-[a-z0-9-]+-kthp-s-projects\.vercel\.app$`; Production origin cố định vẫn nằm trong `CORS_ORIGINS`. Bổ sung hướng dẫn Render, link README, cập nhật hai env example; không thêm secrets.
+- Test `backend/tests/test_cors.py` chạy TestClient qua CORSMiddleware thật: Production/2 Preview được phép; project khác, suffix giả mạo và HTTP không được CORS; OPTIONS `/api/v1/bootstrap` kiểm tra status, origin, methods và headers.
+- Xác minh: backend suite `python -m pytest -q -p no:asyncio` 34 passed, 7 skipped (PostgreSQL integration theo cấu hình DB); `npm run build` đạt; `npm run test:vercel-routing` 9/9; `docker compose config --quiet` và `git diff --check` đạt. Pytest có một Starlette/httpx deprecation warning.
+- Chưa deploy hoặc restart Render và chưa gọi production API từ trình duyệt; cần đặt `CORS_ORIGINS=https://foundation-wheat-tau.vercel.app` cùng `CORS_ORIGIN_REGEX` như `docs/render-deployment.md`, rồi xác minh deployment thực tế.

@@ -70,3 +70,9 @@ Sau thay đổi kiến trúc/tính năng/sửa lỗi, cập nhật tệp này c�
 - Dòng phiếu nháp hiển thị barcode, tổng loại/số lượng/giá trị, nút `+`/`−`, chỉnh số nguyên tối thiểu 1 và xóa riêng; dòng vừa quét được highlight. Scan xử lý tuần tự và dedupe theo `eventId`.
 - Camera yêu cầu lý tưởng 1280×720, ZXing TRY_HARDER với chu kỳ 80 ms, focus/zoom theo capability và re-arm sau 350 ms không giải mã. Mobile giữ event chưa ACK trong outbox bộ nhớ và retry cùng `eventId` khi timeout/reconnect; reload/đóng tab làm mất event chưa ACK.
 - Xác minh: `npm run build` đạt; `npm run test:vercel-routing` đạt 9/9; `python -m pytest -q -p no:asyncio` đạt 25 passed, 7 skipped. Pytest mặc định lỗi INTERNALERROR khi collect với pytest-asyncio trong môi trường hiện tại. Chưa thử camera, pairing, autofocus/zoom hoặc mạng chập chờn trên Android/iPhone thật.
+
+## Sửa CORS Vercel Preview ↔ Render (2026-11-02)
+- Source trước sửa chỉ cho phép `CORS_ORIGINS` (mặc định localhost); Pydantic Settings chưa có `cors_origin_regex`. `CORSMiddleware` chỉ được khai báo một lần, credentials tắt, methods/headers giới hạn như hiện tại. Không có `render.yaml`.
+- Đã thêm `CORS_ORIGIN_REGEX` (mặc định `None`) vào Settings và nối với middleware. Regex Preview được cấu hình bằng environment variable trên Render; Production vẫn dùng `CORS_ORIGINS`, local whitelist mặc định không đổi. Docker Compose cũng chuyển tiếp biến mới.
+- Thêm test `TestClient` qua middleware thật cho Production, hai Preview Foundation, project khác, suffix giả mạo, HTTP, preflight bootstrap, methods/headers, và defaults local.
+- Kiểm thử: backend `python -m pytest -q -p no:asyncio` đạt 34 passed, 7 skipped; routing tests 9/9; frontend build và `docker compose config --quiet` đạt. Chưa deploy/restart Render và chưa xác minh browser/production; cần đặt biến theo `docs/render-deployment.md`.
