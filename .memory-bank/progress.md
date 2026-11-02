@@ -9,7 +9,7 @@
 - Thêm/sửa sản phẩm vẫn preflight barcode qua API lookup; database unique constraint và lỗi 409 là chốt cuối. Sửa sản phẩm có barcode yêu cầu xác nhận trước khi thay.
 - Làm rõ trên trang barcode sự khác nhau giữa quét trực tiếp (tra cứu sản phẩm đã có) và ghép nối QR (đẩy scan từ điện thoại về máy tính); giữ nguyên QR/API/WebSocket vì luồng này có mục đích riêng.
 - Hoàn thiện URL scanner: `VITE_SCANNER_MOBILE_BASE_URL` tách frontend HTTPS trong QR khỏi URL API; QR bị chặn nếu URL rỗng, localhost, HTTP hoặc chứa path/query/credential.
-- Mobile scanner quét liên tục với cooldown, pause/resume, camera sau, EAN-13/EAN-8/UPC-A/UPC-E/Code 128/Code 39, nhập barcode thủ công, phản hồi rung/âm thanh best-effort và dọn media tracks.
+- Mobile scanner quét liên tục với rearm khi barcode rời khung, pause/resume, camera sau, EAN-13/EAN-8/UPC-A/UPC-E/Code 128/Code 39, nhập barcode thủ công, phản hồi rung/âm thanh best-effort và dọn media tracks.
 - Migration Alembic `0004_scanner_code_39` chỉ mở rộng check constraint format, không xóa/sửa dữ liệu hiện có.
 - Migration Alembic `0004_scanner_code_39` chỉ mở rộng check constraint scan format, không xóa/sửa dữ liệu hiện có.
 - Mobile gửi event qua WebSocket xác thực; backend validate quyền/schema, giới hạn tốc độ, persist `eventId` idempotently, ACK và broadcast tới desktop.
@@ -19,8 +19,10 @@
 - Scanner LAN: gỡ QR remote khỏi form sản phẩm, chỉ để kết nối phone trong phiếu nhập và giữ remote QR trên trang tra cứu. Thêm quick-create sản phẩm theo barcode chưa tồn tại, dùng chung `saveProduct`, sau khi lưu thì thêm vào draft form (không cộng tồn).
 - Thêm Vite proxy same-origin cho REST/WebSocket và frontend Compose dev service; backend/PostgreSQL bind loopback host. QR mặc định lấy origin hiện tại, có validation HTTPS/localhost; helper Windows chọn IP private theo default route, tạo cert mkcert và áp migrations.
 - WebSocket incident: phát hiện `.env` local đang trỏ `VITE_API_BASE_URL=http://localhost:8000/api/v1`, bỏ qua Vite WS proxy và tạo đúng URL lỗi đã báo. Chuyển cấu hình sang `/api/v1`, thêm target proxy cho `npm run dev`, chuẩn hóa URL localhost cũ sang same-origin khi frontend được mở bằng LAN host. Reconnect dùng một connect attempt mỗi subscription, backoff và dừng sau 8 lần; owner đồng bộ trạng thái rồi dừng với phiên terminal/auth error. Backend ghi log an toàn về role/session/reason, không token. Thêm test helper và TestClient WS owner/device routes.
-- Thêm quét barcode liên tục trực tiếp trong form nhập kho trên chính thiết bị: tái sử dụng `BarcodeScannerDialog`/ZXing, cùng barcode cooldown 1,8 giây và suppress lookup cùng barcode đang chạy, gọi lookup hiện có rồi cập nhật dòng phiếu nháp. Mã chưa đăng ký đóng camera rồi mở quick-create với barcode giữ nguyên. Không cần QR/WebSocket; remote scanner dùng chung vẫn được giữ ở luồng tra cứu.
+- Thêm quét barcode liên tục trực tiếp trong form nhập kho trên chính thiết bị: tái sử dụng `BarcodeScannerDialog`/ZXing, gọi lookup hiện có rồi cập nhật dòng phiếu nháp. Mã chưa đăng ký mở quick-create với barcode giữ nguyên. Không cần QR/WebSocket; remote scanner dùng chung vẫn được giữ ở luồng tra cứu.
 - Khôi phục QR pairing trong phiếu nhập làm lựa chọn chính cho máy tính không có camera: `RemoteScannerButton` chuyển scan event về đúng `DocumentForm`; direct camera được giữ làm lựa chọn phụ trên cùng thiết bị. Cập nhật nhãn nút và hướng dẫn sử dụng.
+- Scanner phiếu nhập dedupe event theo `eventId`, đưa lookup vào queue tuần tự để không bỏ rơi các lần quét cùng barcode đến nhanh; queue chờ người dùng tạo/bỏ qua sản phẩm chưa đăng ký. Từng dòng draft cho phép nhập số lượng nguyên trực tiếp. Mobile/direct camera không tái phát scan khi barcode còn nằm liên tục trong khung và rearm khi mã đã biến mất 700ms.
+- Kiểm tra cập nhật scanner: `npm run build` đạt; `npm run test:vercel-routing` 9/9 đạt; `git diff --check` không có lỗi whitespace. Chưa thử QR/WebSocket hoặc camera trên thiết bị thật.
 - Kiểm tra `npm run build`: đạt sau khi đưa QR button trở lại phiếu nhập. Chưa xác minh hai thiết bị thật; QR yêu cầu HTTPS frontend LAN mà điện thoại tin cậy.
 - Thêm `scripts/start-lan-vite.ps1` để chạy host Vite qua HTTPS LAN, truyền API proxy và QR origin bằng environment variables; mặc định dùng cổng `5174` nhằm tránh dừng Vite đang chiếm `5173`. Cài mkcert 1.4.4 qua winget. `mkcert -install` lỗi/hang trong phiên công cụ, nên script chỉ tạo cert và hướng dẫn trust `rootCA.pem` thủ công. Đã khởi chạy Vite; truy cập bằng localhost và IPv4 LAN đều phản hồi, module scanner dùng API mode, `GET /api/v1/products` qua proxy trả 200, QR config được bundle thành `https://192.168.16.109:5174`. Wi-Fi network category Public; chưa kiểm tra từ điện thoại hoặc trust CA.
 
@@ -116,3 +118,29 @@
 - Fail-safe: production build không tạo QR nếu thiếu `VITE_SCANNER_MOBILE_BASE_URL`; cấu hình này phải là origin HTTPS public canonical, chỉ trong Production scope. Development vẫn fallback origin. Không bypass/tắt Deployment Protection hoặc thay đổi auth scanner.
 - Kiểm thử lần cập nhật: `npm run build` đạt; `npm run test:vercel-routing` đạt 7/7; backend `python -m pytest -q -p no:asyncio` đạt 23 passed, 7 skipped, 1 deprecation warning; `git diff --check` sạch. `package.json` không có lint script. Không kiểm tra trực tiếp Production Vercel/mobile ẩn danh; PostgreSQL-specific integration tests vẫn skip.
 - Deploy Vercel sau khi đặt `VITE_SCANNER_MOBILE_BASE_URL` đúng origin và kiểm tra Deployment Protection. Không có backend/schema change, không cần Render deployment/migration. Nếu bật Protection trên Production, cần đánh giá vì gate ở cấp deployment có thể chặn toàn website; frontend hiện chưa có tài khoản đăng nhập riêng.
+
+## Nâng cấp giao diện FOUNDATION (2026-10-11)
+- Đã đổi brand sidebar thành FOUNDATION và thêm token/responsive overrides gọn ở cuối `src/styles.css`; giữ các trang/route, chế độ sáng-tối, API, form, bảng và scanner hiện có.
+- `npm run build`: đạt (TypeScript và Vite production build).
+- `npm run test:vercel-routing`: 7 passed, 0 failed; bao gồm route mobile scanner, expiry, API/WSS và auto-camera source contracts.
+- `git diff --check`: đạt. Chưa có browser automation; chưa thực hiện kiểm tra trực quan ở các viewport yêu cầu hoặc test camera hai thiết bị.
+
+## Light-only và nâng cấp bảng (2026-10-11)
+- Ép `data-theme=light` tại bootstrap, thêm meta `color-scheme=light` và gỡ nút/logic chuyển theme; không đổi scanner route.
+- Tăng độ rõ bảng bằng vertical dividers, header nhạt, separators/hover, vùng cuộn ngang độc lập, cùng kích thước/độ đọc phù hợp hơn.
+- `npm run build`: đạt; `npm run test:vercel-routing`: 7 passed; `git diff --check`: đạt. Chưa kiểm thử trực quan thực tế ở desktop/tablet/mobile.
+- Gỡ hai khối trạng thái workspace/API khỏi sidebar theo yêu cầu; giữ các điều hướng và thông tin tài khoản. Build đạt.
+
+## Giữ phiên QR khi nhập sản phẩm (2026-10-11)
+- Sau khi mobile kết nối thành công, QR dialog tự thu gọn; desktop còn nút trạng thái để mở lại thông tin phiên. Đóng/ẩn dialog không gọi API kết thúc phiên.
+- Thêm hàng đợi barcode theo thứ tự cho form nhập kho; tránh ghi đè form sản phẩm mới, gộp các lần quét cùng mã thành số lượng, tiếp tục hàng đợi sau lưu hoặc bỏ qua.
+- `npm run build`: đạt. `npm run test:vercel-routing`: 7 passed. `git diff --check`: đạt. Chưa E2E trên thiết bị điện thoại.
+
+## Backend idempotency, Audit Log và backup (2026-10-29)
+- Thêm migration `0005_idempotency_audit`: bảng idempotency dùng `idempotency_key` làm khóa chính/UNIQUE, lưu hash payload và response gốc; Audit Log có action, outcome, HTTP status và JSON details.
+- `POST /api/v1/documents` hỗ trợ `Idempotency-Key` trong cùng transaction với tạo phiếu. Retry cùng payload trả response ban đầu; reuse key cho body khác trả 409 `IDEMPOTENCY_KEY_REUSED`. Mã phiếu đã có unique constraint; cơ chế advisory lock sinh mã tiếp tục được giữ.
+- Frontend API mode gửi khóa idempotency và giữ khóa cho lần retry cùng payload cho đến khi response và bootstrap refresh thành công.
+- Xác nhận xuất/điều chỉnh vượt tồn trả 400 `INSUFFICIENT_STOCK`, không cập nhật tồn. API rejection 400/403/409 được ghi Audit Log; test PostgreSQL bổ sung kiểm tra replay, key conflict, tồn và audit.
+- Thêm `scripts/backup_postgres.sh` (pg_dump custom format + SHA-256), `scripts/restore_postgres.sh` (verify checksum trước pg_restore), và hướng dẫn URI local/managed, cron, staging trong `docs/postgres-backup-restore.md`.
+- Kiểm tra: PostgreSQL integration suite đạt 32 passed, một cảnh báo Starlette/httpx; frontend build và routing tests 7/7 đạt. `compileall`, `bash -n` hai script và Alembic offline SQL generation đạt. Tạo custom-format backup trước migration tại `C:\Users\hongt\AppData\Local\Temp\opencode\warehouse-before-0005.dump` (778272 bytes; SHA-256 `a5acef2b66dfab0faec9e92cb44a6542f07b68914667e6f9aafa2fbcd24e813f`). Alembic `0004` và `0005` đã áp dụng lên PostgreSQL Compose local; backend rebuilt, health/readiness và revision `0005` xác nhận. Chạy hai script backup/restore thực tế trong PostgreSQL container; checksum đạt, restore clean thành công vào database validation local cô lập `warehouse_restore_validation_20261029`. Chưa diễn tập trên staging/managed; lịch hệ thống chưa cấu hình.
+- Giới hạn: ứng dụng chưa có authentication/authorization. Audit context sẵn sàng đọc `request.state.actor_name`, nhưng vẫn fallback `Hệ thống` tới khi SV4 nối middleware xác thực và đặt principal đáng tin cậy. Idempotency header backend vẫn optional để giữ tương thích client cũ; frontend hiện gửi và giữ lại cùng key khi retry trong phiên.

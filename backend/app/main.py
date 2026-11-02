@@ -9,6 +9,7 @@ from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.errors import ApiError
 from app.db.session import SessionLocal
+from app.models import AuditLog
 
 app = FastAPI(title=settings.app_name, version="1.0.0")
 app.add_middleware(
@@ -20,8 +21,38 @@ app.add_middleware(
 )
 
 
+def record_rejected_request(request: Request, status_code: int, error_code: str) -> None:
+    if status_code not in (400, 403, 409):
+        return
+    db = getattr(request.state, "db", None)
+    owns_session = db is None
+    if owns_session:
+        db = SessionLocal()
+    try:
+        db.rollback()
+        actor_name = getattr(request.state, "actor_name", "Hệ thống")
+        db.add(
+            AuditLog(
+                message=f"Từ chối {request.method} {request.url.path}: {error_code}",
+                actor_name=actor_name,
+                action=f"{request.method} {request.url.path}",
+                outcome="rejected",
+                status_code=status_code,
+                details={"errorCode": error_code},
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        # Audit failures must not replace the original API error response.
+    finally:
+        if owns_session:
+            db.close()
+
+
 @app.exception_handler(ApiError)
 async def api_error_handler(_request: Request, error: ApiError):
+    record_rejected_request(_request, error.status_code, error.code)
     return JSONResponse(
         status_code=error.status_code,
         content={"error": {"code": error.code, "message": error.message, "details": error.details}},
@@ -43,6 +74,7 @@ async def validation_error_handler(_request: Request, error: RequestValidationEr
 @app.exception_handler(StarletteHTTPException)
 async def http_error_handler(_request: Request, error: StarletteHTTPException):
     message = error.detail if isinstance(error.detail, str) else "Yêu cầu không thể thực hiện."
+    record_rejected_request(_request, error.status_code, "HTTP_ERROR")
     return JSONResponse(
         status_code=error.status_code,
         content={"error": {"code": "HTTP_ERROR", "message": message, "details": None}},

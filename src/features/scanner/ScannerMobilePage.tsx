@@ -7,8 +7,7 @@ import { scanEventService, scannerSessionService, isValidDemoQrNonce, isValidDem
 import type { ConnectionStatus, ScanEvent, ScanFormat, ScanResult, ScannerError } from './types'
 
 const supportedFormats = [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.QR_CODE]
-const configuredCooldown = Number(import.meta.env.VITE_SCANNER_SCAN_COOLDOWN_MS ?? 1800)
-const scanCooldownMs = Number.isFinite(configuredCooldown) ? Math.max(500, Math.min(configuredCooldown, 10000)) : 1800
+const rearmAfterMissingMs = 700
 const formatNames = new Map<number, ScanFormat>([
   [BarcodeFormat.EAN_13, 'EAN_13'],
   [BarcodeFormat.EAN_8, 'EAN_8'],
@@ -77,7 +76,7 @@ export function ScannerMobilePage() {
   const cameraAttemptRef = useRef(0)
   const autoCameraAttemptedRef = useRef(false)
   const pausedRef = useRef(false)
-  const lastScanRef = useRef<{ barcode: string; at: number } | null>(null)
+  const lastScanRef = useRef<{ barcode: string; lastSeenAt: number } | null>(null)
   const joinStartedRef = useRef(false)
   const mobileConnectionCleanupRef = useRef<(() => void) | null>(null)
   const inFlightIdsRef = useRef(new Set<string>())
@@ -162,6 +161,7 @@ export function ScannerMobilePage() {
     const cameraAttempt = ++cameraAttemptRef.current
     cameraStartingRef.current = true
     pausedRef.current = false
+    lastScanRef.current = null
     setError(null)
     setScanStatus('starting')
     try {
@@ -172,13 +172,20 @@ export function ScannerMobilePage() {
         audio: false,
         video: requestedDeviceId ? { deviceId: { exact: requestedDeviceId } } : { facingMode: { ideal: 'environment' } },
       }, videoRef.current ?? undefined, (result) => {
-        if (!result || !mountedRef.current || cameraAttemptRef.current !== cameraAttempt || pausedRef.current) return
+        if (!mountedRef.current || cameraAttemptRef.current !== cameraAttempt || pausedRef.current) return
+        const now = Date.now()
+        if (!result) {
+          if (lastScanRef.current && now - lastScanRef.current.lastSeenAt >= rearmAfterMissingMs) lastScanRef.current = null
+          return
+        }
         const code = result.getText()
         const format = formatNames.get(result.getBarcodeFormat())
         if (format) {
-          const now = Date.now()
-          if (lastScanRef.current?.barcode === code && now - lastScanRef.current.at < scanCooldownMs) return
-          lastScanRef.current = { barcode: code, at: now }
+          if (lastScanRef.current?.barcode === code) {
+            lastScanRef.current.lastSeenAt = now
+            return
+          }
+          lastScanRef.current = { barcode: code, lastSeenAt: now }
           receiveCode(code, format)
         }
       })
@@ -359,7 +366,7 @@ export function ScannerMobilePage() {
         <video ref={videoRef} muted playsInline className={scanStatus === 'scanning' || scanStatus === 'paused' ? 'camera-video visible' : 'camera-video'} />
         {scanStatus !== 'scanning' && scanStatus !== 'paused' && <div className="camera-placeholder"><Camera size={27} /><strong>{scanStatus === 'starting' ? 'Đang xin quyền camera…' : error?.code === 'CAMERA_PERMISSION_DENIED' ? 'Camera chưa được cấp quyền' : error?.code === 'CAMERA_NOT_FOUND' ? 'Không tìm thấy camera' : 'Camera đang tắt'}</strong><span>{error?.code === 'CAMERA_PERMISSION_DENIED' ? 'Cho phép camera trong cài đặt trình duyệt hoặc biểu tượng ổ khóa, sau đó thử lại.' : 'Sau khi cho phép, camera sau sẽ mở tự động khi phiên API kết nối thành công.'}</span></div>}
         {scanStatus === 'scanning' && <div className="camera-guide" aria-hidden="true"><i /></div>}
-        {(scanStatus === 'scanning' || scanStatus === 'paused') && <div className="camera-overlay-bottom"><span>{scanStatus === 'paused' ? 'Đã tạm dừng nhận diện' : 'Đưa barcode vào khung; quét liên tục'}</span>{controlsRef.current?.switchTorch && <button type="button" aria-label={torchOn ? 'Tắt đèn flash' : 'Bật đèn flash'} onClick={toggleTorch} className={torchOn ? 'flash-active' : ''}><Flashlight size={17} /></button>}</div>}
+         {(scanStatus === 'scanning' || scanStatus === 'paused') && <div className="camera-overlay-bottom"><span>{scanStatus === 'paused' ? 'Đã tạm dừng nhận diện' : 'Đưa barcode ra khỏi khung rồi quét lại mã đó'}</span>{controlsRef.current?.switchTorch && <button type="button" aria-label={torchOn ? 'Tắt đèn flash' : 'Bật đèn flash'} onClick={toggleTorch} className={torchOn ? 'flash-active' : ''}><Flashlight size={17} /></button>}</div>}
       </div>
       {devices.length > 1 && <label className="mobile-camera-select"><span>Camera</span><select value={deviceId} onChange={(event) => { setDeviceId(event.target.value); if (scanStatus === 'scanning') void startCamera(event.target.value) }}><option value="">Camera sau (tự chọn)</option>{devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>)}</select></label>}
       {error && <div className={`mobile-camera-error ${error.code === 'TORCH_UNSUPPORTED' || error.code === 'TORCH_FAILED' ? 'minor' : ''}`} role="alert"><AlertTriangle size={15} /><span>{error.message}</span></div>}

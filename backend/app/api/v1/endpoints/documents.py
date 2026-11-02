@@ -1,19 +1,21 @@
 from datetime import datetime, timezone
+import hashlib
+import json
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ApiError
 from app.db.session import get_db
-from app.models import AuditLog, Inventory, Product, StockDocument, StockDocumentItem, StockMovement, Supplier, Warehouse
+from app.models import AuditLog, IdempotencyRequest, Inventory, Product, StockDocument, StockDocumentItem, StockMovement, Supplier, Warehouse
 from app.schemas import DocumentInput
+from app.services.audit_context import current_actor_name
 from app.services.serialization import document_dict
 
 router = APIRouter()
-ACTOR = "Hệ thống"
 
 
 def get_document(db: Session, document_id: UUID, lock: bool = False) -> StockDocument:
@@ -49,8 +51,45 @@ def list_documents(
 
 
 @router.post("/documents", status_code=201)
-def create_document(payload: DocumentInput, db: Session = Depends(get_db)):
+def create_document(
+    payload: DocumentInput,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    db: Session = Depends(get_db),
+):
+    if idempotency_key is not None:
+        idempotency_key = idempotency_key.strip()
+        if not idempotency_key or len(idempotency_key) > 255:
+            raise ApiError(400, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key phải có từ 1 đến 255 ký tự.")
+    request_json = json.dumps(payload.model_dump(mode="json", by_alias=True), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    request_hash = hashlib.sha256(request_json.encode("utf-8")).hexdigest()
     with db.begin():
+        if idempotency_key:
+            db.execute(
+                pg_insert(IdempotencyRequest)
+                .values(
+                    idempotency_key=idempotency_key,
+                    request_hash=request_hash,
+                    response_status=201,
+                    response_json=None,
+                )
+                .on_conflict_do_nothing(index_elements=[IdempotencyRequest.idempotency_key])
+            )
+            prior_request = db.get(IdempotencyRequest, idempotency_key)
+            if prior_request.request_hash != request_hash:
+                raise ApiError(409, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key đã được dùng cho nội dung yêu cầu khác.")
+            if prior_request.response_json is not None:
+                db.add(
+                    AuditLog(
+                        message=f"Gửi lại yêu cầu tạo phiếu {prior_request.response_json.get('code', '')}",
+                        actor_name=current_actor_name(db),
+                        action="POST /api/v1/documents",
+                        outcome="replayed",
+                        status_code=prior_request.response_status,
+                        details={"documentId": prior_request.response_json.get("id")},
+                    )
+                )
+                return prior_request.response_json
+
         warehouse = db.get(Warehouse, payload.warehouseId)
         if not warehouse:
             raise ApiError(404, "WAREHOUSE_NOT_FOUND", "Không tìm thấy kho.")
@@ -61,7 +100,7 @@ def create_document(payload: DocumentInput, db: Session = Depends(get_db)):
             if not supplier:
                 raise ApiError(404, "SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp đã chọn.")
             if not supplier.active:
-                raise ApiError(409, "SUPPLIER_INACTIVE", "Nhà cung cấp đang tạm ngưng, không thể tạo phiếu nhập.")
+                raise ApiError(400, "SUPPLIER_INACTIVE", "Nhà cung cấp đang tạm ngưng, không thể tạo phiếu nhập.")
             partner = supplier.name
         product_ids = [line.productId for line in payload.lines]
         products = set(db.scalars(select(Product.id).where(Product.id.in_(product_ids))).all())
@@ -93,9 +132,21 @@ def create_document(payload: DocumentInput, db: Session = Depends(get_db)):
         )
         db.add(document)
         db.flush()
-        db.add(AuditLog(message=f"Tạo phiếu {document.code}", actor_name=ACTOR))
+        db.add(
+            AuditLog(
+                message=f"Tạo phiếu {document.code}",
+                actor_name=current_actor_name(db),
+                action="POST /api/v1/documents",
+                outcome="success",
+                status_code=201,
+                details={"documentId": str(document.id), "documentCode": document.code},
+            )
+        )
         db.flush()
-    return document_dict(document)
+        result = document_dict(document)
+        if idempotency_key:
+            prior_request.response_json = result
+    return result
 
 
 @router.get("/documents/{document_id}")
@@ -110,7 +161,7 @@ def confirm_document(document_id: UUID, db: Session = Depends(get_db)):
         if document.status == "Đã xác nhận":
             return document_dict(document)
         if document.status != "Bản nháp":
-            raise ApiError(409, "DOCUMENT_NOT_DRAFT", "Chỉ có thể xác nhận phiếu nháp.")
+            raise ApiError(400, "DOCUMENT_NOT_DRAFT", "Chỉ có thể xác nhận phiếu nháp.")
         if not document.items:
             raise ApiError(422, "EMPTY_DOCUMENT", "Phiếu cần có ít nhất một sản phẩm.")
 
@@ -147,7 +198,7 @@ def confirm_document(document_id: UUID, db: Session = Depends(get_db)):
                         )
                     ) or 0
                     raise ApiError(
-                        409,
+                        400,
                         "INSUFFICIENT_STOCK",
                         f"{product.name if product else 'Sản phẩm'}: tồn kho không đủ (còn {available}, cần {item.quantity}).",
                     )
@@ -160,12 +211,19 @@ def confirm_document(document_id: UUID, db: Session = Depends(get_db)):
                     warehouse_id=document.warehouse_id,
                     document_id=document.id,
                     quantity_delta=delta,
-                    actor_name=ACTOR,
+                    actor_name=current_actor_name(db),
                     source=document.partner or document.code,
                 )
             )
         document.status = "Đã xác nhận"
-        db.add(AuditLog(message=f"Xác nhận phiếu {document.code}", actor_name=ACTOR))
+        db.add(
+            AuditLog(
+                message=f"Xác nhận phiếu {document.code}",
+                actor_name=current_actor_name(db),
+                action=f"Xác nhận phiếu {document.code}",
+                outcome="success",
+            )
+        )
         db.flush()
         result = document_dict(document)
     return result
@@ -176,8 +234,15 @@ def cancel_document(document_id: UUID, db: Session = Depends(get_db)):
     with db.begin():
         document = get_document(db, document_id, lock=True)
         if document.status != "Bản nháp":
-            raise ApiError(409, "DOCUMENT_NOT_DRAFT", "Chỉ có thể hủy phiếu nháp.")
+            raise ApiError(400, "DOCUMENT_NOT_DRAFT", "Chỉ có thể hủy phiếu nháp.")
         document.status = "Đã hủy"
-        db.add(AuditLog(message=f"Hủy phiếu {document.code}", actor_name=ACTOR))
+        db.add(
+            AuditLog(
+                message=f"Hủy phiếu {document.code}",
+                actor_name=current_actor_name(db),
+                action=f"Hủy phiếu {document.code}",
+                outcome="success",
+            )
+        )
         result = document_dict(document)
     return result

@@ -42,7 +42,7 @@ export function BarcodeScannerDialog({ onClose, onDetected, confirmBeforeApply =
   const controlsRef = useRef<IScannerControls | null>(null)
   const mountedRef = useRef(false)
   const scannedRef = useRef(false)
-  const lastScansRef = useRef(new Map<string, number>())
+  const activeBarcodeRef = useRef<{ barcode: string; lastSeenAt: number } | null>(null)
   const [status, setStatus] = useState<CameraStatus>('stopped')
   const [error, setError] = useState('')
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
@@ -81,6 +81,7 @@ export function BarcodeScannerDialog({ onClose, onDetected, confirmBeforeApply =
     setDetected(null)
     setStatus('starting')
     scannedRef.current = false
+    activeBarcodeRef.current = null
     const hints = new Map<DecodeHintType, unknown>()
     hints.set(DecodeHintType.POSSIBLE_FORMATS, formats)
     const reader = new BrowserMultiFormatReader(hints as Map<DecodeHintType, any>, { delayBetweenScanAttempts: 120 })
@@ -91,18 +92,21 @@ export function BarcodeScannerDialog({ onClose, onDetected, confirmBeforeApply =
           ? { deviceId: { exact: requestedCameraId } }
           : { facingMode: { ideal: 'environment' } },
       }, videoRef.current ?? undefined, (result) => {
-        if (!result || !mountedRef.current || scannedRef.current) return
+        if (!mountedRef.current || scannedRef.current) return
+        const now = Date.now()
+        if (!result) {
+          if (activeBarcodeRef.current && now - activeBarcodeRef.current.lastSeenAt >= 700) activeBarcodeRef.current = null
+          return
+        }
         const barcode = result.getText().trim()
         const format = formatNames.get(result.getBarcodeFormat())
         if (!barcode || !format) return
         if (continuous) {
-          const now = Date.now()
-          const lastScanAt = lastScansRef.current.get(barcode)
-          if (lastScanAt && now - lastScanAt < 1800) return
-          lastScansRef.current.set(barcode, now)
-          for (const [code, scannedAt] of lastScansRef.current) {
-            if (now - scannedAt > 3600) lastScansRef.current.delete(code)
+          if (activeBarcodeRef.current?.barcode === barcode) {
+            activeBarcodeRef.current.lastSeenAt = now
+            return
           }
+          activeBarcodeRef.current = { barcode, lastSeenAt: now }
           setDetected({ barcode, format })
           onDetected(barcode, format)
           return
@@ -199,7 +203,7 @@ export function BarcodeScannerDialog({ onClose, onDetected, confirmBeforeApply =
     onClose()
   }
 
-  return <Modal title={continuous ? 'Quét hàng nhập bằng camera' : 'Quét mã vạch sản phẩm'} subtitle={continuous ? 'Hướng camera vào barcode; quét lại cùng mã sau 1,8 giây để tăng số lượng.' : 'Cho phép camera khi trình duyệt hỏi. Mã quét chỉ được điền vào biểu mẫu, chưa tự lưu sản phẩm.'} onClose={onClose} wide>
+  return <Modal title={continuous ? 'Quét hàng nhập bằng camera' : 'Quét mã vạch sản phẩm'} subtitle={continuous ? 'Hướng camera vào barcode; đưa mã ra khỏi khung rồi quét lại để tăng số lượng.' : 'Cho phép camera khi trình duyệt hỏi. Mã quét chỉ được điền vào biểu mẫu, chưa tự lưu sản phẩm.'} onClose={onClose} wide>
     <div className="product-scanner-dialog">
       <div className={`product-scanner-preview ${status === 'scanning' ? 'camera-active' : ''}`}>
         <video ref={videoRef} muted playsInline />

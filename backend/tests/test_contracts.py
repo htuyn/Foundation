@@ -4,9 +4,11 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from app.main import app
-from app.models import ScanEvent
+from app.models import AuditLog, IdempotencyRequest, ScanEvent, StockDocument
+from app.services.audit_context import current_actor_name, set_actor_name
 from app.schemas import DocumentInput, DocumentLineInput, InventoryAdjustmentInput, ProductInput, ScannerEventInput
 
 
@@ -91,3 +93,17 @@ def test_pagination_limits_are_published_in_openapi() -> None:
     assert "/api/v1/scanner/sessions/{session_id}/leave" in schema["paths"]
     lookup_parameters = {parameter["name"] for parameter in schema["paths"]["/api/v1/products/lookup"]["get"]["parameters"]}
     assert {"code", "barcode"}.issubset(lookup_parameters)
+
+
+def test_document_idempotency_and_audit_schema_constraints() -> None:
+    assert IdempotencyRequest.__table__.primary_key.columns.keys() == ["idempotency_key"]
+    assert StockDocument.__table__.c.code.unique is True
+    assert {"action", "outcome", "status_code", "details"}.issubset(AuditLog.__table__.c.keys())
+
+
+def test_audit_actor_context_uses_authenticated_request_identity() -> None:
+    db = Session()
+    set_actor_name(db, "Nhân viên kho")
+    assert current_actor_name(db) == "Nhân viên kho"
+    assert current_actor_name(Session()) == "Hệ thống"
+    db.close()

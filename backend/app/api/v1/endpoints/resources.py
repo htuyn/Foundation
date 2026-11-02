@@ -10,14 +10,14 @@ from app.core.errors import ApiError
 from app.db.session import get_db
 from app.models import AuditLog, Category, Inventory, Product, StockDocument, StockDocumentItem, StockMovement, Supplier, User, Warehouse
 from app.schemas import CategoryCreate, InventoryAdjustmentInput, ProductInput, SupplierInput, UserInput, WarehouseInput
+from app.services.audit_context import current_actor_name
 from app.services.serialization import audit_dict, product_dict, supplier_dict, user_dict, warehouse_dict
 
 router = APIRouter()
-ACTOR = "Hệ thống"
 
 
 def add_audit(db: Session, message: str) -> None:
-    db.add(AuditLog(message=message, actor_name=ACTOR))
+    db.add(AuditLog(message=message, actor_name=current_actor_name(db), action=message, outcome="success"))
 
 
 def integrity_error(error: IntegrityError) -> ApiError:
@@ -388,7 +388,7 @@ def adjust_inventory(payload: InventoryAdjustmentInput, db: Session = Depends(ge
         )
         current = row.quantity if row else 0
         if current + payload.quantity < 0:
-            raise ApiError(409, "INSUFFICIENT_STOCK", f"Điều chỉnh sẽ làm tồn kho âm (hiện có {current}).")
+            raise ApiError(400, "INSUFFICIENT_STOCK", f"Điều chỉnh sẽ làm tồn kho âm (hiện có {current}).")
         code = f"DC-{datetime.now(timezone.utc).year}-{uuid4().hex[:8].upper()}"
         if row:
             row.quantity = current + payload.quantity
@@ -400,7 +400,7 @@ def adjust_inventory(payload: InventoryAdjustmentInput, db: Session = Depends(ge
             product_id=payload.productId,
             warehouse_id=payload.warehouseId,
             quantity_delta=payload.quantity,
-            actor_name=ACTOR,
+            actor_name=current_actor_name(db),
             source=payload.reason,
         )
         db.add(movement)
