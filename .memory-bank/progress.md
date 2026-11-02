@@ -144,3 +144,11 @@
 - Thêm `scripts/backup_postgres.sh` (pg_dump custom format + SHA-256), `scripts/restore_postgres.sh` (verify checksum trước pg_restore), và hướng dẫn URI local/managed, cron, staging trong `docs/postgres-backup-restore.md`.
 - Kiểm tra: PostgreSQL integration suite đạt 32 passed, một cảnh báo Starlette/httpx; frontend build và routing tests 7/7 đạt. `compileall`, `bash -n` hai script và Alembic offline SQL generation đạt. Tạo custom-format backup trước migration tại `C:\Users\hongt\AppData\Local\Temp\opencode\warehouse-before-0005.dump` (778272 bytes; SHA-256 `a5acef2b66dfab0faec9e92cb44a6542f07b68914667e6f9aafa2fbcd24e813f`). Alembic `0004` và `0005` đã áp dụng lên PostgreSQL Compose local; backend rebuilt, health/readiness và revision `0005` xác nhận. Chạy hai script backup/restore thực tế trong PostgreSQL container; checksum đạt, restore clean thành công vào database validation local cô lập `warehouse_restore_validation_20261029`. Chưa diễn tập trên staging/managed; lịch hệ thống chưa cấu hình.
 - Giới hạn: ứng dụng chưa có authentication/authorization. Audit context sẵn sàng đọc `request.state.actor_name`, nhưng vẫn fallback `Hệ thống` tới khi SV4 nối middleware xác thực và đặt principal đáng tin cậy. Idempotency header backend vẫn optional để giữ tương thích client cũ; frontend hiện gửi và giữ lại cùng key khi retry trong phiên.
+
+
+
+## SV1 - Hạ tầng & Dữ liệu
+- [x] **CV01: Thiết kế & Cấu hình hạ tầng mạng Kho An Phát (Packet Tracer)**
+  - Đã hoàn thành sơ đồ mạng mô phỏng (`docs/KhoHang_AnPhat.pkt`).
+  - Đã kiểm thử ping thông mạng giữa máy quét Wi-Fi (Point-1) và App-Server (`192.168.1.10`) đạt 100% (Minh chứng MC01).
+- [/] **CV02: Thiết kế Cơ sở dữ liệu & ERD** (Đang triển khai)
