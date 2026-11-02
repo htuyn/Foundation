@@ -152,3 +152,7 @@
   - Đã hoàn thành sơ đồ mạng mô phỏng (`docs/KhoHang_AnPhat.pkt`).
   - Đã kiểm thử ping thông mạng giữa máy quét Wi-Fi (Point-1) và App-Server (`192.168.1.10`) đạt 100% (Minh chứng MC01).
 - [/] **CV02: Thiết kế Cơ sở dữ liệu & ERD** (Đang triển khai)
+
+## Scanner sensitivity update
+- Improved mobile and direct camera decoding with ZXing `TRY_HARDER`, 80 ms scan attempts, and ideal 1920x1080 capture. Added Code 39 to direct camera.
+- `npm run build` passed. Physical camera behavior remains unverified.

@@ -167,10 +167,13 @@ export function ScannerMobilePage() {
     try {
       const hints = new Map<DecodeHintType, unknown>()
       hints.set(DecodeHintType.POSSIBLE_FORMATS, supportedFormats)
-      const reader = new BrowserMultiFormatReader(hints as Map<DecodeHintType, any>, { delayBetweenScanAttempts: 120 })
+      hints.set(DecodeHintType.TRY_HARDER, true)
+      const reader = new BrowserMultiFormatReader(hints as Map<DecodeHintType, any>, { delayBetweenScanAttempts: 80 })
       const controls = await reader.decodeFromConstraints({
         audio: false,
-        video: requestedDeviceId ? { deviceId: { exact: requestedDeviceId } } : { facingMode: { ideal: 'environment' } },
+        video: requestedDeviceId
+          ? { deviceId: { exact: requestedDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       }, videoRef.current ?? undefined, (result) => {
         if (!mountedRef.current || cameraAttemptRef.current !== cameraAttempt || pausedRef.current) return
         const now = Date.now()

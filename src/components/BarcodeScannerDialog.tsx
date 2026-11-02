@@ -11,6 +11,7 @@ const formats = [
   BarcodeFormat.UPC_A,
   BarcodeFormat.UPC_E,
   BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
 ]
 
 const formatNames = new Map<number, Exclude<ScanFormat, 'QR_CODE' | 'MANUAL'>>([
@@ -19,6 +20,7 @@ const formatNames = new Map<number, Exclude<ScanFormat, 'QR_CODE' | 'MANUAL'>>([
   [BarcodeFormat.UPC_A, 'UPC_A'],
   [BarcodeFormat.UPC_E, 'UPC_E'],
   [BarcodeFormat.CODE_128, 'CODE_128'],
+  [BarcodeFormat.CODE_39, 'CODE_39'],
 ])
 
 type CameraStatus = 'stopped' | 'starting' | 'scanning' | 'success' | 'error'
@@ -84,13 +86,14 @@ export function BarcodeScannerDialog({ onClose, onDetected, confirmBeforeApply =
     activeBarcodeRef.current = null
     const hints = new Map<DecodeHintType, unknown>()
     hints.set(DecodeHintType.POSSIBLE_FORMATS, formats)
-    const reader = new BrowserMultiFormatReader(hints as Map<DecodeHintType, any>, { delayBetweenScanAttempts: 120 })
+    hints.set(DecodeHintType.TRY_HARDER, true)
+    const reader = new BrowserMultiFormatReader(hints as Map<DecodeHintType, any>, { delayBetweenScanAttempts: 80 })
     try {
       const controls = await reader.decodeFromConstraints({
         audio: false,
         video: requestedCameraId
-          ? { deviceId: { exact: requestedCameraId } }
-          : { facingMode: { ideal: 'environment' } },
+          ? { deviceId: { exact: requestedCameraId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       }, videoRef.current ?? undefined, (result) => {
         if (!mountedRef.current || scannedRef.current) return
         const now = Date.now()
@@ -215,7 +218,7 @@ export function BarcodeScannerDialog({ onClose, onDetected, confirmBeforeApply =
       {error && <div className="product-scanner-error" role="alert"><AlertTriangle size={15} />{error}</div>}
       {detected && <div className="product-scanner-detected" role="status"><strong>{detected.barcode}</strong><span>{continuous ? `Vừa nhận · ${detected.format}` : detected.format}</span>{confirmBeforeApply && <button type="button" className="button button-primary" onClick={applyDetected}>Dùng mã này</button>}</div>}
       <div className="product-scanner-manual"><label className="form-field"><span>Hoặc nhập barcode thủ công</span><input maxLength={160} value={manualCode} onChange={(event) => setManualCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); submitManual() } }} placeholder="Nhập mã barcode" /></label><button type="button" className="button button-secondary" onClick={submitManual}>Dùng mã nhập</button></div>
-      <p className="field-help">Hỗ trợ EAN-13, EAN-8, UPC-A, UPC-E và Code 128. Camera yêu cầu quyền truy cập và HTTPS (trừ localhost).</p>
+      <p className="field-help">Hỗ trợ EAN-13, EAN-8, UPC-A, UPC-E, Code 128 và Code 39. Camera yêu cầu quyền truy cập và HTTPS (trừ localhost).</p>
       <div className="product-scanner-actions">
         {status === 'scanning' ? <button type="button" className="button button-secondary" onClick={stopCamera}><CameraOff size={15} />Dừng quét</button> : <button type="button" className="button button-primary" disabled={status === 'starting'} onClick={() => void startCamera()}><Camera size={15} />{status === 'starting' ? 'Đang mở camera…' : status === 'success' ? 'Quét lại' : 'Thử mở camera'}</button>}
         <button type="button" className="button button-secondary" onClick={onClose}>Đóng</button>

@@ -17,7 +17,7 @@
 - Luồng QR chỉ hoạt động với backend API. Không có localStorage/BroadcastChannel hay công cụ phát scan giả để giả lập kết nối hoặc kết quả nghiệp vụ.
 - API mode xác thực QR nonce dùng một lần, session và device bearer. Sự kiện gửi tới backend rồi được phát cho máy tính; scan không cập nhật tồn kho.
 - Scanner tokens chỉ giới hạn quyền trong phiên, không phải đăng nhập tài khoản hoặc phân quyền nghiệp vụ.
-- Camera sản phẩm hỗ trợ EAN-13, EAN-8, UPC-A, UPC-E và Code 128; mobile scanner hỗ trợ thêm Code 39. QR_CODE được phân loại riêng và không tự thêm vào phiếu kho.
+- Camera sản phẩm hỗ trợ EAN-13, EAN-8, UPC-A, UPC-E, Code 128 và Code 39; camera trực tiếp và mobile bật ZXing TRY_HARDER, ưu tiên độ phân giải 1920×1080 và thử giải mã mỗi 80 ms. Mobile scanner cũng hỗ trợ Code 39. QR_CODE được phân loại riêng và không tự thêm vào phiếu kho.
 
 ## Tích hợp backend hiện tại
 

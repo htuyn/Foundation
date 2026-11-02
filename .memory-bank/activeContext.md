@@ -63,3 +63,8 @@ Sau thay đổi kiến trúc/tính năng/sửa lỗi, cập nhật tệp này c�
 - Ghi audit các API rejection 400/403/409 và mở rộng serializer; hoạt động CRUD/phiếu tiếp tục ghi log thành công. Actor lấy từ context gắn với `request.state.actor_name`; chưa có user authentication nên fallback vẫn là `Hệ thống`, SV4 cần đặt danh tính đã xác thực vào state này.
 - Thêm script backup/restore PostgreSQL có SHA-256 và hướng dẫn lịch cron/staging/managed DB ở `docs/postgres-backup-restore.md`.
 - Xác minh: backend PostgreSQL suite đạt 32 passed; frontend build và routing tests 7/7 đạt. Backup trước migration được tạo tại thư mục temp và kiểm tra SHA-256; Alembic `0004`–`0005` đã áp dụng lên PostgreSQL Compose local, backend container rebuild/restart, `/health/ready` trả ready và DB ở `0005_idempotency_audit`. Chạy thực tế cả hai script trong PostgreSQL container; checksum verified và restore `--clean` thành công vào DB cô lập `warehouse_restore_validation_20261029`. Chưa chạy restore trên staging/managed; lịch hệ thống chưa cấu hình.
+
+
+## Scanner sensitivity update
+- Mobile and direct camera now use ZXing `TRY_HARDER`, 80 ms scan attempts, and ideal 1920x1080 capture; direct camera supports Code 39.
+- Desktop build passed. Physical camera behavior remains unverified.
