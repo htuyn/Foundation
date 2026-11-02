@@ -53,7 +53,7 @@ Sau thay đổi kiến trúc/tính năng/sửa lỗi, cập nhật tệp này c�
 ## Đồng bộ barcode vào phiếu nháp (2026-10-29)
 - Phiếu nhập xử lý scan events tuần tự và bỏ qua event trùng `eventId`; các lần quét mới cùng barcode vẫn cộng dồn số lượng, kể cả khi lookup trước đó chưa xong. Nếu mã chưa đăng ký, hàng đợi tạm dừng tới khi người dùng tạo hoặc bỏ qua sản phẩm quick-create.
 - Số lượng từng dòng phiếu có thể sửa trực tiếp bằng input số nguyên tối thiểu 1. Quét/sửa chỉ đổi draft; tồn kho chỉ đổi khi xác nhận phiếu.
-- Mobile/direct camera coi barcode giữ liên tục trong khung là một lần quét; scanner rearm sau khi barcode biến mất tối thiểu 700ms, cho phép quét lại có chủ ý mà không cộng lặp do camera giữ mã.
+- Mobile/direct camera coi barcode giữ liên tục trong khung là một lần quét; scanner re-arm khi barcode vắng khỏi kết quả giải mã đủ 350 ms. Cấu hình re-arm chưa được đo trên thiết bị thật.
 - `npm run build` và `npm run test:vercel-routing` đạt (9/9). Chưa thử QR/WebSocket hoặc camera trên thiết bị thật.
 
 ## Backend idempotency, Audit Log và backup (2026-10-29)
@@ -65,6 +65,8 @@ Sau thay đổi kiến trúc/tính năng/sửa lỗi, cập nhật tệp này c�
 - Xác minh: backend PostgreSQL suite đạt 32 passed; frontend build và routing tests 7/7 đạt. Backup trước migration được tạo tại thư mục temp và kiểm tra SHA-256; Alembic `0004`–`0005` đã áp dụng lên PostgreSQL Compose local, backend container rebuild/restart, `/health/ready` trả ready và DB ở `0005_idempotency_audit`. Chạy thực tế cả hai script trong PostgreSQL container; checksum verified và restore `--clean` thành công vào DB cô lập `warehouse_restore_validation_20261029`. Chưa chạy restore trên staging/managed; lịch hệ thống chưa cấu hình.
 
 
-## Scanner sensitivity update
-- Mobile and direct camera now use ZXing `TRY_HARDER`, 80 ms scan attempts, and ideal 1920x1080 capture; direct camera supports Code 39.
-- Desktop build passed. Physical camera behavior remains unverified.
+## Nâng cấp scanner (2026-11-02)
+- Bảng kết nối QR trên desktop hiển thị inline, không che phiếu; session đã xác thực và WebSocket owner vẫn được giữ khi ẩn bảng. Có thời lượng phiên, số lượt nhận, barcode gần nhất và trạng thái đang xử lý.
+- Dòng phiếu nháp hiển thị barcode, tổng loại/số lượng/giá trị, nút `+`/`−`, chỉnh số nguyên tối thiểu 1 và xóa riêng; dòng vừa quét được highlight. Scan xử lý tuần tự và dedupe theo `eventId`.
+- Camera yêu cầu lý tưởng 1280×720, ZXing TRY_HARDER với chu kỳ 80 ms, focus/zoom theo capability và re-arm sau 350 ms không giải mã. Mobile giữ event chưa ACK trong outbox bộ nhớ và retry cùng `eventId` khi timeout/reconnect; reload/đóng tab làm mất event chưa ACK.
+- Xác minh: `npm run build` đạt; `npm run test:vercel-routing` đạt 9/9; `python -m pytest -q -p no:asyncio` đạt 25 passed, 7 skipped. Pytest mặc định lỗi INTERNALERROR khi collect với pytest-asyncio trong môi trường hiện tại. Chưa thử camera, pairing, autofocus/zoom hoặc mạng chập chờn trên Android/iPhone thật.

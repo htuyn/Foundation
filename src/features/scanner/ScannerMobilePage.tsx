@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library'
-import { AlertTriangle, Camera, CameraOff, Check, Flashlight, Pause, Play, RefreshCw, ScanLine, Send, Smartphone, WifiOff } from 'lucide-react'
+import { AlertTriangle, Camera, CameraOff, Check, Flashlight, Minus, Pause, Play, Plus, RefreshCw, ScanLine, Send, Smartphone, WifiOff } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { scanEventService, scannerSessionService, isValidDemoQrNonce, isValidDemoSessionId, ScannerApiError } from './scannerService'
 import type { ConnectionStatus, ScanEvent, ScanFormat, ScanResult, ScannerError } from './types'
 
 const supportedFormats = [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.QR_CODE]
-const rearmAfterMissingMs = 700
+const rearmAfterMissingMs = 350
 const formatNames = new Map<number, ScanFormat>([
   [BarcodeFormat.EAN_13, 'EAN_13'],
   [BarcodeFormat.EAN_8, 'EAN_8'],
@@ -68,6 +68,7 @@ export function ScannerMobilePage() {
     ? validSessionUrl && qrWasCurrentAtOpen ? 'Đang xác thực phiên với backend.' : 'Liên kết không hợp lệ hoặc QR đã hết hạn.'
     : 'Đang kiểm tra liên kết demo; backend chưa xác thực phiên.')
   const [torchOn, setTorchOn] = useState(false)
+  const [zoom, setZoom] = useState<{ min: number; max: number; step: number; value: number } | null>(null)
   const [clock, setClock] = useState(Date.now())
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
@@ -80,6 +81,11 @@ export function ScannerMobilePage() {
   const joinStartedRef = useRef(false)
   const mobileConnectionCleanupRef = useRef<(() => void) | null>(null)
   const inFlightIdsRef = useRef(new Set<string>())
+  const outboxRef = useRef(new Map<string, ScanEvent>())
+  const connectionStatusRef = useRef(connectionStatus)
+  const retryAttemptsRef = useRef(new Map<string, number>())
+  const retryTimersRef = useRef(new Map<string, number>())
+  connectionStatusRef.current = connectionStatus
   const sessionExpired = useMemo(() => validSessionUrl && expiresAt > 0 && clock >= expiresAt, [clock, expiresAt, validSessionUrl])
   const canScan = validSessionUrl && qrWasCurrentAtOpen && !sessionExpired && (mode === 'demo' || connectionStatus === 'connected')
 
@@ -93,6 +99,7 @@ export function ScannerMobilePage() {
     if (video) video.srcObject = null
     if (mountedRef.current) {
       setTorchOn(false)
+      setZoom(null)
       setScanStatus('stopped')
     }
   }, [])
@@ -100,24 +107,54 @@ export function ScannerMobilePage() {
   const deliver = useCallback(async (event: ScanEvent) => {
     if (inFlightIdsRef.current.has(event.eventId)) return
     inFlightIdsRef.current.add(event.eventId)
+    outboxRef.current.set(event.eventId, event)
     setHistory((current) => [{ event, status: 'pending', message: 'Đang gửi về máy tính…' }, ...current.filter((item) => item.event.eventId !== event.eventId)])
     try {
       const result = await scanEventService.sendFromMobile(event)
+      outboxRef.current.delete(event.eventId)
+      retryAttemptsRef.current.delete(event.eventId)
+      window.clearTimeout(retryTimersRef.current.get(event.eventId))
+      retryTimersRef.current.delete(event.eventId)
       if (mountedRef.current) setHistory((current) => current.map((item) => item.event.eventId === event.eventId ? { ...item, status: result.delivered ? 'new' : 'failed', message: result.message } : item))
     } catch (sendError) {
       if (mountedRef.current) {
-        setHistory((current) => current.map((item) => item.event.eventId === event.eventId ? { ...item, status: 'failed', message: sendError instanceof Error ? sendError.message : 'Gửi mã thất bại; hãy thử gửi lại.' } : item))
+        const terminalError = sendError instanceof ScannerApiError && [400, 403, 409, 410, 422].includes(sendError.status)
+        if (terminalError) {
+          outboxRef.current.delete(event.eventId)
+          retryAttemptsRef.current.delete(event.eventId)
+          window.clearTimeout(retryTimersRef.current.get(event.eventId))
+          retryTimersRef.current.delete(event.eventId)
+        }
+        setHistory((current) => current.map((item) => item.event.eventId === event.eventId ? { ...item, status: terminalError ? 'failed' : 'pending', message: `${sendError instanceof Error ? sendError.message : 'Gửi mã chưa được xác nhận.'}${terminalError ? '' : ' Sự kiện được giữ lại và sẽ tự gửi lại khi kết nối phục hồi.'}` } : item))
         if (sendError instanceof ScannerApiError && [403, 410].includes(sendError.status)) {
           setConnectionStatus(sendError.status === 410 ? 'expired' : 'error')
           setJoinMessage(`${sendError.message} Hãy quay lại máy tính để tạo phiên/QR mới.`)
           setError({ code: sendError.code ?? 'SCANNER_SESSION_CLOSED', message: sendError.message, recoverable: false })
           stopCamera()
         }
+        if (!terminalError && mountedRef.current && !retryTimersRef.current.has(event.eventId)) {
+          const attempt = (retryAttemptsRef.current.get(event.eventId) ?? 0) + 1
+          retryAttemptsRef.current.set(event.eventId, attempt)
+          const delay = Math.min(1000 * (2 ** (attempt - 1)), 15000)
+          const timer = window.setTimeout(() => {
+            retryTimersRef.current.delete(event.eventId)
+            if (outboxRef.current.has(event.eventId) && connectionStatusRef.current === 'connected') void deliver(event)
+          }, delay)
+          retryTimersRef.current.set(event.eventId, timer)
+        }
       }
     } finally {
       inFlightIdsRef.current.delete(event.eventId)
     }
   }, [stopCamera])
+
+  const flushOutbox = useCallback(() => {
+    for (const event of outboxRef.current.values()) {
+      window.clearTimeout(retryTimersRef.current.get(event.eventId))
+      retryTimersRef.current.delete(event.eventId)
+      void deliver(event)
+    }
+  }, [deliver])
 
   const receiveCode = useCallback((rawCode: string, format: ScanFormat) => {
     const barcode = rawCode.trim()
@@ -172,8 +209,8 @@ export function ScannerMobilePage() {
       const controls = await reader.decodeFromConstraints({
         audio: false,
         video: requestedDeviceId
-          ? { deviceId: { exact: requestedDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          ? { deviceId: { exact: requestedDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
       }, videoRef.current ?? undefined, (result) => {
         if (!mountedRef.current || cameraAttemptRef.current !== cameraAttempt || pausedRef.current) return
         const now = Date.now()
@@ -197,6 +234,17 @@ export function ScannerMobilePage() {
         return
       }
       controlsRef.current = controls
+      const track = (videoRef.current?.srcObject as MediaStream | null)?.getVideoTracks()[0]
+      if (track && typeof track.getCapabilities === 'function') {
+        const capabilities = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[]; zoom?: { min: number; max: number; step: number } }
+        const advanced: (MediaTrackConstraintSet & { focusMode?: string; zoom?: number })[] = []
+        if (capabilities.focusMode?.includes('continuous')) advanced.push({ focusMode: 'continuous' })
+        if (capabilities.zoom) {
+          const currentZoom = (track.getSettings() as MediaTrackSettings & { zoom?: number }).zoom ?? capabilities.zoom.min
+          setZoom({ ...capabilities.zoom, value: currentZoom })
+        }
+        if (advanced.length) void track.applyConstraints({ advanced: advanced as MediaTrackConstraintSet[] }).catch(() => undefined)
+      }
       setScanStatus('scanning')
       try {
         const availableDevices = await BrowserMultiFormatReader.listVideoInputDevices()
@@ -231,6 +279,8 @@ export function ScannerMobilePage() {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      retryTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+      retryTimersRef.current.clear()
       stopCamera()
     }
   }, [stopCamera])
@@ -257,13 +307,16 @@ export function ScannerMobilePage() {
       return
     }
     setConnectionStatus(nextStatus)
-    if (nextStatus === 'connected') setJoinMessage('Điện thoại đã ghép nối và kết nối tới backend.')
+    if (nextStatus === 'connected') {
+      setJoinMessage('Điện thoại đã ghép nối và kết nối tới backend.')
+      flushOutbox()
+    }
     if (nextStatus === 'ended' || nextStatus === 'expired') {
       setJoinMessage(nextStatus === 'expired' ? 'Phiên scanner đã hết hạn.' : 'Máy tính đã ngắt phiên scanner.')
       setError({ code: nextStatus === 'expired' ? 'SESSION_EXPIRED' : 'SESSION_ENDED', message: nextStatus === 'expired' ? 'Phiên scanner đã hết hạn.' : 'Máy tính đã ngắt phiên scanner.', recoverable: false })
       stopCamera()
     }
-  }, [stopCamera])
+  }, [flushOutbox, stopCamera])
 
   const startDeviceConnection = useCallback(() => {
     mobileConnectionCleanupRef.current?.()
@@ -360,8 +413,20 @@ export function ScannerMobilePage() {
     }
   }
 
+  const changeZoom = async (direction: -1 | 1) => {
+    const track = (videoRef.current?.srcObject as MediaStream | null)?.getVideoTracks()[0]
+    if (!track || !zoom) return
+    const nextZoom = Math.min(zoom.max, Math.max(zoom.min, zoom.value + zoom.step * direction))
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: nextZoom } as MediaTrackConstraintSet] })
+      setZoom((current) => current ? { ...current, value: nextZoom } : current)
+    } catch {
+      setError({ code: 'CAMERA_ZOOM_FAILED', message: 'Không thể điều chỉnh zoom trên camera này.', recoverable: true })
+    }
+  }
+
   return <main className="mobile-scanner-page">
-    <header className="mobile-scanner-header"><div className="mobile-scanner-brand"><span><ScanLine size={18} /></span><div><strong>Smart Warehouse</strong><small>TRÌNH QUÉT DI ĐỘNG</small></div></div><span className="demo-pill">{mode === 'api' ? 'API' : 'DEMO'}</span></header>
+     <header className="mobile-scanner-header"><div className="mobile-scanner-brand"><span><ScanLine size={18} /></span><div><strong>Smart Warehouse</strong><small>{connectionStatus === 'connected' ? 'ĐÃ KẾT NỐI MÁY TÍNH' : connectionStatus === 'disconnected' ? 'MẤT KẾT NỐI' : 'TRÌNH QUÉT DI ĐỘNG'} · PHIÊN {sessionId.slice(0, 8)}</small></div></div><span className={`demo-pill ${connectionStatus === 'connected' ? 'scanner-mobile-connected' : ''}`}>{scanStatus === 'scanning' ? 'CAMERA ON' : mode === 'api' ? connectionStatus.toUpperCase() : 'DEMO'}</span></header>
     <section className="mobile-session-card"><div className="mobile-session-top"><div className="mobile-session-icon"><Smartphone size={17} /></div><div><strong>{connectionStatus === 'expired' ? 'Phiên đã hết hạn' : !qrWasCurrentAtOpen ? 'QR đã hết hạn' : validSessionUrl ? mode === 'api' ? 'Phiên đã xác minh' : 'Phiên demo chưa xác minh' : 'Phiên không hợp lệ'}</strong><small>{validSessionUrl ? `Mã phiên ${sessionId.slice(0, 17)}…` : 'Không thể xác minh QR này.'}</small></div></div><div className="mobile-demo-warning" role={joinFailed || connectionStatus === 'disconnected' || connectionStatus === 'error' || connectionStatus === 'expired' ? 'alert' : undefined}><WifiOff size={15} /><span>{joinMessage} {mode === 'api' ? 'Mã quét được gửi tới backend.' : <>Mã quét chỉ lưu tạm trên điện thoại, <strong>không gửi về máy tính</strong>.</>}</span></div>{mode === 'api' && validSessionUrl && !sessionExpired && (joinFailed || connectionStatus === 'disconnected') && <button type="button" className="mobile-button mobile-button-secondary mobile-connect-retry" onClick={retryConnection}>{connectionStatus === 'disconnected' ? 'Thử kết nối lại' : 'Thử xác thực lại'}</button>}</section>
     <section className="mobile-camera-card">
       <div className="mobile-section-heading"><div><h1>Quét mã sản phẩm</h1><p>{scanStatus === 'starting' ? 'Đang yêu cầu quyền truy cập camera…' : scanStatus === 'scanning' ? 'Hướng camera vào barcode trên sản phẩm' : scanStatus === 'paused' ? 'Camera đang tạm dừng' : 'Camera sẽ tự bật sau khi phiên được xác thực'}</p></div>{scanStatus === 'scanning' && <span className="camera-live"><i />Đang quét</span>}</div>
@@ -369,11 +434,11 @@ export function ScannerMobilePage() {
         <video ref={videoRef} muted playsInline className={scanStatus === 'scanning' || scanStatus === 'paused' ? 'camera-video visible' : 'camera-video'} />
         {scanStatus !== 'scanning' && scanStatus !== 'paused' && <div className="camera-placeholder"><Camera size={27} /><strong>{scanStatus === 'starting' ? 'Đang xin quyền camera…' : error?.code === 'CAMERA_PERMISSION_DENIED' ? 'Camera chưa được cấp quyền' : error?.code === 'CAMERA_NOT_FOUND' ? 'Không tìm thấy camera' : 'Camera đang tắt'}</strong><span>{error?.code === 'CAMERA_PERMISSION_DENIED' ? 'Cho phép camera trong cài đặt trình duyệt hoặc biểu tượng ổ khóa, sau đó thử lại.' : 'Sau khi cho phép, camera sau sẽ mở tự động khi phiên API kết nối thành công.'}</span></div>}
         {scanStatus === 'scanning' && <div className="camera-guide" aria-hidden="true"><i /></div>}
-         {(scanStatus === 'scanning' || scanStatus === 'paused') && <div className="camera-overlay-bottom"><span>{scanStatus === 'paused' ? 'Đã tạm dừng nhận diện' : 'Đưa barcode ra khỏi khung rồi quét lại mã đó'}</span>{controlsRef.current?.switchTorch && <button type="button" aria-label={torchOn ? 'Tắt đèn flash' : 'Bật đèn flash'} onClick={toggleTorch} className={torchOn ? 'flash-active' : ''}><Flashlight size={17} /></button>}</div>}
+          {(scanStatus === 'scanning' || scanStatus === 'paused') && <div className="camera-overlay-bottom"><span>{scanStatus === 'paused' ? 'Đã tạm dừng nhận diện' : 'Đưa barcode ra khỏi khung rồi quét lại mã đó'}</span>{controlsRef.current?.switchTorch && <button type="button" aria-label={torchOn ? 'Tắt đèn flash' : 'Bật đèn flash'} onClick={toggleTorch} className={torchOn ? 'flash-active' : ''}><Flashlight size={17} /></button>}</div>}
       </div>
       {devices.length > 1 && <label className="mobile-camera-select"><span>Camera</span><select value={deviceId} onChange={(event) => { setDeviceId(event.target.value); if (scanStatus === 'scanning') void startCamera(event.target.value) }}><option value="">Camera sau (tự chọn)</option>{devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>)}</select></label>}
       {error && <div className={`mobile-camera-error ${error.code === 'TORCH_UNSUPPORTED' || error.code === 'TORCH_FAILED' ? 'minor' : ''}`} role="alert"><AlertTriangle size={15} /><span>{error.message}</span></div>}
-      <div className="mobile-camera-actions">{scanStatus === 'starting' ? <button type="button" className="mobile-button mobile-button-secondary" onClick={stopCamera}><CameraOff size={18} />Hủy yêu cầu camera</button> : scanStatus === 'scanning' || scanStatus === 'paused' ? <><button type="button" className="mobile-button mobile-button-secondary" onClick={togglePause}>{scanStatus === 'paused' ? <Play size={18} /> : <Pause size={18} />}{scanStatus === 'paused' ? 'Tiếp tục quét' : 'Tạm dừng'}</button><button type="button" className="mobile-button mobile-button-secondary" onClick={stopCamera}><CameraOff size={18} />Tắt camera</button></> : <button type="button" className="mobile-button mobile-button-primary" disabled={!canScan} onClick={() => void startCamera()}><Camera size={18} />{error?.code === 'CAMERA_PERMISSION_DENIED' ? 'Cho phép camera / Bật camera' : 'Bật camera'}</button>}</div>
+      <div className="mobile-camera-actions">{scanStatus === 'starting' ? <button type="button" className="mobile-button mobile-button-secondary" onClick={stopCamera}><CameraOff size={18} />Hủy yêu cầu camera</button> : scanStatus === 'scanning' || scanStatus === 'paused' ? <><button type="button" className="mobile-button mobile-button-secondary" onClick={togglePause}>{scanStatus === 'paused' ? <Play size={18} /> : <Pause size={18} />}{scanStatus === 'paused' ? 'Tiếp tục quét' : 'Tạm dừng'}</button><button type="button" className="mobile-button mobile-button-secondary" onClick={stopCamera}><CameraOff size={18} />Tắt camera</button></> : <button type="button" className="mobile-button mobile-button-primary" disabled={!canScan} onClick={() => void startCamera()}><Camera size={18} />{error?.code === 'CAMERA_PERMISSION_DENIED' ? 'Cho phép camera / Bật camera' : 'Bật camera'}</button>}{zoom && scanStatus === 'scanning' && <div className="mobile-zoom-control"><button type="button" disabled={zoom.value <= zoom.min} aria-label="Giảm zoom" onClick={() => void changeZoom(-1)}><Minus size={16} /></button><span>{zoom.value.toFixed(1)}×</span><button type="button" disabled={zoom.value >= zoom.max} aria-label="Tăng zoom" onClick={() => void changeZoom(1)}><Plus size={16} /></button></div>}</div>
       {notice && <div className="mobile-scan-notice"><Check size={15} />{notice}</div>}
     </section>
      <section className="mobile-manual-card"><h2>Nhập barcode thủ công</h2><form onSubmit={submitManual}><input value={manualCode} onChange={(event) => setManualCode(event.target.value)} disabled={!canScan} placeholder="Barcode sản phẩm" aria-label="Nhập barcode sản phẩm" /><button type="submit" disabled={!manualCode.trim() || !canScan} aria-label="Gửi barcode"><Send size={17} /></button></form></section>

@@ -34,6 +34,7 @@ export function BarcodePage() {
   const [cameraOpen, setCameraOpen] = useState(false)
   const [scanResults, setScanResults] = useState<ScanResult[]>([])
   const processedEventsRef = useRef(new Set<string>())
+  const scanQueueRef = useRef(Promise.resolve())
   const lookupRequestRef = useRef(0)
   const [resolvedLookup, setResolvedLookup] = useState<{ code: string; product: Product | null } | null>(null)
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'not_found' | 'error'>('idle')
@@ -67,25 +68,29 @@ export function BarcodePage() {
       return { product: null, failed: true }
     }
   }, [lookupProduct])
-  const handleScan = useCallback(async (event: ScanEvent) => {
-    if (processedEventsRef.current.has(event.eventId)) return
+  const handleScan = useCallback((event: ScanEvent): Promise<void> => {
+    if (processedEventsRef.current.has(event.eventId)) return scanQueueRef.current
     processedEventsRef.current.add(event.eventId)
-    if (processedEventsRef.current.size > 500) processedEventsRef.current.delete(processedEventsRef.current.values().next().value as string)
-    if (event.format === 'QR_CODE' && (/\/scanner\/mobile/i.test(event.barcode) || /[?&](sessionId|mode)=/i.test(event.barcode))) {
-      const result: ScanResult = { event, status: 'invalid', message: 'Đây là QR kết nối phiên, không phải barcode sản phẩm.' }
-      setScanResults((current) => [result, ...current].slice(0, 8))
-      return
+    const process = async () => {
+      if (event.format === 'QR_CODE' && (/\/scanner\/mobile/i.test(event.barcode) || /[?&](sessionId|mode)=/i.test(event.barcode))) {
+        const result: ScanResult = { event, status: 'invalid', message: 'Đây là QR kết nối phiên, không phải barcode sản phẩm.' }
+        setScanResults((current) => [result, ...current].slice(0, 8))
+        return
+      }
+      const lookup = await resolveCode(event.barcode)
+      const matched = lookup?.product ?? null
+      if (!matched) {
+        const result: ScanResult = { event, status: lookup?.failed ? 'failed' : 'not_found', message: lookup?.failed ? 'Không thể tra cứu sản phẩm với backend.' : 'Không tìm thấy sản phẩm; mã được giữ lại để tra cứu.' }
+        setScanResults((current) => [result, ...current].slice(0, 8))
+        return
+      }
+      const result = addProduct(matched.id, event.barcode, event.scannedAt)
+      const entry: ScanResult = { event, status: result === 'added' ? 'new' : 'duplicate', productId: matched.id, message: result === 'added' ? 'Đã thêm vào danh sách thao tác.' : 'Đã cộng thêm 1 vào dòng sản phẩm hiện có.' }
+      setScanResults((current) => [entry, ...current].slice(0, 8))
     }
-    const lookup = await resolveCode(event.barcode)
-    const matched = lookup?.product ?? null
-    if (!matched) {
-      const result: ScanResult = { event, status: lookup?.failed ? 'failed' : 'not_found', message: lookup?.failed ? 'Không thể tra cứu sản phẩm với backend.' : 'Không tìm thấy sản phẩm; mã được giữ lại để tra cứu.' }
-      setScanResults((current) => [result, ...current].slice(0, 8))
-      return
-    }
-    const result = addProduct(matched.id, event.barcode, event.scannedAt)
-    const entry: ScanResult = { event, status: result === 'added' ? 'new' : 'duplicate', productId: matched.id, message: result === 'added' ? 'Đã thêm vào danh sách thao tác.' : 'Đã cộng thêm 1 vào dòng sản phẩm hiện có.' }
-    setScanResults((current) => [entry, ...current].slice(0, 8))
+    const task = scanQueueRef.current.then(process)
+    scanQueueRef.current = task.catch(() => undefined)
+    return task
   }, [addProduct, resolveCode])
   const lookupManually = (event: FormEvent) => {
     event.preventDefault()
@@ -117,7 +122,7 @@ export function BarcodePage() {
         <div className="barcode-hint">Máy quét USB/Bluetooth hoạt động như bàn phím. Barcode chỉ tra cứu sản phẩm đã có; không tự tạo sản phẩm.</div>
         <div className="barcode-scan-actions">
           <button type="button" className="button button-secondary" onClick={() => setCameraOpen(true)}><Camera size={16} />Quét bằng camera</button>
-          {scannerMode === 'api' ? <RemoteScannerButton onScan={(event) => { void handleScan(event) }} className="button button-secondary scanner-context-button" /> : <span className="field-help">Ghép nối điện thoại cần backend API; quét trực tiếp bằng camera không cần kết nối.</span>}
+          {scannerMode === 'api' ? <RemoteScannerButton onScan={handleScan} className="button button-secondary scanner-context-button" /> : <span className="field-help">Ghép nối điện thoại cần backend API; quét trực tiếp bằng camera không cần kết nối.</span>}
         </div>
       </div>
       {term && (product ? <div className="panel barcode-result">

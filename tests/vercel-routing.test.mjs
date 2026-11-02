@@ -73,7 +73,8 @@ test('hiding the desktop scanner dialog keeps its session receiver mounted', () 
 
 test('draft document scan events are deduplicated by eventId and looked up sequentially', () => {
   assert.match(documentsPageSource, /processedScanEventIdsRef\.current\.has\(event\.eventId\)/)
-  assert.match(documentsPageSource, /scanQueueRef\.current = scanQueueRef\.current\.then\(\(\) => addScannedProduct\(event\.barcode, event\.format, fromCamera\)\)/)
+  assert.match(documentsPageSource, /const task = scanQueueRef\.current\.then\(\(\) => addScannedProduct\(event\.barcode, event\.format, fromCamera\)\)/)
+  assert.match(documentsPageSource, /scanEventTasksRef\.current\.set\(event\.eventId, task\)/)
   assert.match(documentsPageSource, /onScan=\{handleScanEvent\}/)
   assert.match(documentsPageSource, /line\.quantity \+ 1/)
 })
@@ -81,7 +82,12 @@ test('draft document scan events are deduplicated by eventId and looked up seque
 test('draft line quantities are editable and camera scans rearm only after barcode leaves view', () => {
   assert.match(documentsPageSource, /aria-label=\{`Số lượng \$\{product\?\.name \?\? ''\}`\} type="number" min="1" step="1"/)
   assert.match(documentsPageSource, /Number\.isInteger\(nextQuantity\) \|\| nextQuantity < 1/)
-  assert.match(directScannerSource, /activeBarcodeRef\.current\.lastSeenAt >= 700/)
+  assert.match(directScannerSource, /rearmAfterMissingMs = 350/)
+  assert.match(directScannerSource, /activeBarcodeRef\.current\.lastSeenAt >= rearmAfterMissingMs/)
   assert.match(mobilePageSource, /lastScanRef\.current\.lastSeenAt >= rearmAfterMissingMs/)
+  assert.match(mobilePageSource, /outboxRef\.current\.set\(event\.eventId, event\)/)
+  assert.match(mobilePageSource, /outboxRef\.current\.has\(event\.eventId\)[\s\S]*?deliver\(event\)/)
+  assert.match(connectionDialogSource, /scanner-connection-console/)
+  assert.match(connectionDialogSource, /Promise\.resolve\(\)\.then\(\(\) => onScanRef\.current\(event\)\)\.then\(finishScan, finishScan\)/)
   assert.doesNotMatch(directScannerSource, /now - lastScanAt < 1800/)
 })

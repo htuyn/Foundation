@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { Copy, Link2, QrCode, RefreshCw, Smartphone, Unplug, Wifi, WifiOff } from 'lucide-react'
-import { Modal, StatusBadge } from '../../components/common'
+import { Copy, Link2, QrCode, RefreshCw, ScanLine, Smartphone, Unplug, Wifi, WifiOff, X } from 'lucide-react'
+import { StatusBadge } from '../../components/common'
 import { notify } from '../../lib/feedback'
 import { scanEventService, scannerMode, scannerSessionService } from './scannerService'
 import type { ConnectionStatus, ScanEvent, ScannerSession, ScannerQrTicket, ScannerSessionStatus } from './types'
@@ -20,7 +20,7 @@ const statusLabels: Record<ConnectionStatus, string> = {
 }
 const configuredMobileBaseUrl = import.meta.env.VITE_SCANNER_MOBILE_BASE_URL?.trim() ?? ''
 
-export function ScannerConnectionDialog({ open, onClose, onScan }: { open: boolean; onClose: () => void; onScan: (event: ScanEvent) => void }) {
+export function ScannerConnectionDialog({ open, onClose, onScan }: { open: boolean; onClose: () => void; onScan: (event: ScanEvent) => void | Promise<void> }) {
   const [status, setStatus] = useState<ConnectionStatus>('not_created')
   const [session, setSession] = useState<ScannerSession | null>(null)
   const [qrImage, setQrImage] = useState('')
@@ -30,7 +30,9 @@ export function ScannerConnectionDialog({ open, onClose, onScan }: { open: boole
   const [baseUrl] = useState(() => configuredMobileBaseUrl || window.location.origin)
   const [copied, setCopied] = useState(false)
   const [connectionError, setConnectionError] = useState('')
-  const receiveTimer = useRef<number | undefined>(undefined)
+  const [scanCount, setScanCount] = useState(0)
+  const [latestEvent, setLatestEvent] = useState<ScanEvent | null>(null)
+  const pendingScansRef = useRef(0)
   const onScanRef = useRef(onScan)
   const transportConnectedRef = useRef(false)
   const automaticSessionStartedRef = useRef(false)
@@ -57,9 +59,14 @@ export function ScannerConnectionDialog({ open, onClose, onScan }: { open: boole
     if (!session) return
     const unsubscribe = scanEventService.subscribe(session.sessionId, (event) => {
       setStatus('receiving')
-      onScanRef.current(event)
-      window.clearTimeout(receiveTimer.current)
-      receiveTimer.current = window.setTimeout(() => setStatus(transportConnectedRef.current ? 'connected' : 'disconnected'), 1400)
+      pendingScansRef.current += 1
+      setScanCount((current) => current + 1)
+      setLatestEvent(event)
+      const finishScan = () => {
+        pendingScansRef.current = Math.max(0, pendingScansRef.current - 1)
+        if (pendingScansRef.current === 0) setStatus((current) => current === 'receiving' ? transportConnectedRef.current ? 'connected' : 'disconnected' : current)
+      }
+      void Promise.resolve().then(() => onScanRef.current(event)).then(finishScan, finishScan)
     }, (message) => setConnectionError(message), (nextStatus: ScannerSessionStatus) => {
       if (nextStatus === 'device_disconnected') {
         setStatus('disconnected')
@@ -79,7 +86,6 @@ export function ScannerConnectionDialog({ open, onClose, onScan }: { open: boole
     })
     return () => {
       unsubscribe()
-      window.clearTimeout(receiveTimer.current)
     }
   }, [session?.sessionId])
 
@@ -96,6 +102,9 @@ export function ScannerConnectionDialog({ open, onClose, onScan }: { open: boole
       if (session && session.status !== 'ended' && session.status !== 'expired') await scannerSessionService.closeSession(session.sessionId)
       const next = await scannerSessionService.createSession()
       setSession(next)
+      setScanCount(0)
+      setLatestEvent(null)
+      pendingScansRef.current = 0
       setStatus(next.status)
       setConnectionError('')
     } catch (error) {
@@ -173,9 +182,13 @@ export function ScannerConnectionDialog({ open, onClose, onScan }: { open: boole
 
   const tone = status === 'waiting_for_device' || status === 'receiving' ? 'warning' : status === 'connected' ? 'success' : status === 'error' || status === 'expired' || status === 'disconnected' ? 'danger' : 'neutral'
   if (!open) return null
-  return <Modal title="Kết nối điện thoại làm scanner" subtitle="Quét QR bằng điện thoại; đóng cửa sổ này không ngắt phiên, mã vẫn được chuyển về màn hình đang thao tác." onClose={dismiss} wide>
+  const elapsedSeconds = session ? Math.max(0, Math.floor((clock - new Date(session.createdAt).getTime()) / 1000)) : 0
+  return <section className="scanner-connection-console" aria-label="Kết nối điện thoại làm scanner">
+    <div className="scanner-console-heading"><div><h2>Kết nối điện thoại làm scanner</h2><p>Phiếu và danh sách sản phẩm vẫn hiển thị, tự cập nhật khi nhận barcode.</p></div><button type="button" className="icon-button" aria-label="Ẩn bảng kết nối" onClick={dismiss}><X size={17} /></button></div>
     <div className="scanner-demo-banner"><span>{scannerMode === 'api' ? 'API' : 'CHƯA CẤU HÌNH'}</span><p>{scannerMode === 'api' ? 'Backend xác thực QR dùng một lần và phiên thiết bị; mã quét được chuyển về máy tính, không tự thay đổi tồn kho.' : 'Scanner từ xa yêu cầu cấu hình backend API. Để quét trên thiết bị hiện tại, dùng nút camera trực tiếp ở trang Quét mã vạch.'}</p></div>
     <div className="scanner-session-status"><div className="scanner-session-status-icon">{status === 'connected' ? <Wifi size={18} /> : status === 'disconnected' ? <WifiOff size={18} /> : <Link2 size={18} />}</div><div><strong>{statusLabels[status]}</strong><small>{session ? `Phiên tạo lúc ${new Date(session.createdAt).toLocaleTimeString('vi-VN')} · hết hạn ${new Date(session.expiresAt).toLocaleTimeString('vi-VN')}` : 'Chưa có phiên quét nào được tạo.'}</small></div><StatusBadge tone={tone}>{session?.mode === 'demo' ? 'DEMO' : statusLabels[status]}</StatusBadge></div>
+    {session && <div className="scanner-session-metrics"><div><span>Thời gian phiên</span><strong>{Math.floor(elapsedSeconds / 60).toString().padStart(2, '0')}:{(elapsedSeconds % 60).toString().padStart(2, '0')}</strong></div><div><span>Lượt quét nhận</span><strong>{scanCount}</strong></div><div><span>Quét gần nhất</span><strong>{latestEvent ? new Date(latestEvent.scannedAt).toLocaleTimeString('vi-VN') : '—'}</strong></div></div>}
+    {latestEvent && <div className="scanner-console-latest"><ScanLine size={16} /><span><strong>{latestEvent.barcode}</strong><small>{latestEvent.format} · {new Date(latestEvent.scannedAt).toLocaleTimeString('vi-VN')} · {status === 'receiving' ? 'Đang tra cứu trên máy tính…' : 'Đã nhận tại máy tính'}</small></span></div>}
       {connectionError && <div className="product-scanner-error" role="alert">{connectionError}</div>}
        {session?.status === 'waiting_for_device' && <div className="scanner-url-field"><span>Địa chỉ kết nối điện thoại</span><small role={baseUrlError ? 'alert' : undefined}>{baseUrlError || `QR sử dụng origin frontend đã cấu hình: ${baseUrl}. Điện thoại cần truy cập được địa chỉ này qua HTTPS.`}</small></div>}
       {session && qrImage && qrTicket && <div className="scanner-connect-content"><div className={`scanner-qr-card ${qrSecondsLeft === 0 ? 'qr-expired' : ''}`}><img src={qrImage} alt="QR ghép nối điện thoại, nonce dùng một lần và tự đổi trước khi hết hạn" /></div><div className="scanner-connect-instructions"><h3><Smartphone size={17} />Điện thoại làm máy quét</h3><ol><li>Quét QR đang hiển thị bằng camera điện thoại.</li><li>Nonce chỉ dùng một lần; TTL mặc định 60 giây và tự được thay mới trước khi hết hạn.</li><li>Trang scanner xác thực phiên rồi mới xin quyền camera.</li><li>Mã quét chuyển về form/phiếu hiện tại; không tự lưu hoặc xác nhận nghiệp vụ.</li></ol><div className="scanner-url-actions"><button type="button" className="button button-secondary" onClick={copyLink} disabled={qrSecondsLeft === 0}><Copy size={14} />{copied ? 'Đã sao chép' : 'Sao chép liên kết QR'}</button><button type="button" className="button button-secondary" onClick={() => setQrRefreshKey((current) => current + 1)}><RefreshCw size={14} />Làm mới QR</button><button type="button" className="button button-secondary" onClick={createSession} disabled={status === 'creating'}><RefreshCw size={14} />Tạo phiên mới</button></div></div></div>}
@@ -183,5 +196,5 @@ export function ScannerConnectionDialog({ open, onClose, onScan }: { open: boole
         {!session && <div className="scanner-session-empty"><QrCode size={27} /><strong>{scannerMode === 'api' ? status === 'creating' ? 'Đang tạo phiên scanner…' : 'Chưa tạo phiên scanner' : 'Scanner điện thoại chưa khả dụng'}</strong><span>{scannerMode === 'api' ? 'Backend tạo phiên riêng, nonce ghép nối một lần và tự hết hạn.' : 'Cấu hình API backend để sử dụng scanner từ xa.'}</span>{scannerMode === 'api' && <><div className="scanner-url-field"><span>Địa chỉ kết nối</span><small>{baseUrlError || `Được lấy tự động từ origin hiện tại: ${baseUrl}`}</small></div><button type="button" className="button button-primary" onClick={createSession} disabled={status === 'creating' || Boolean(baseUrlError)}><QrCode size={16} />Tạo QR kết nối</button></>}</div>}
        {session && <div className="scanner-dialog-footer"><span>Phiên tự hết hạn lúc {new Date(session.expiresAt).toLocaleTimeString('vi-VN')}</span><div>{status !== 'ended' && status !== 'expired' && <button type="button" className="button button-secondary scanner-end-button" onClick={closeSession}><Unplug size={15} />Ngắt kết nối</button>}<button type="button" className="button button-secondary" onClick={dismiss}>Ẩn cửa sổ</button></div></div>}
       {!session && <div className="scanner-dialog-footer"><span>Token phiên giới hạn quyền scanner; không phải đăng nhập hệ thống.</span><button type="button" className="button button-secondary" onClick={dismiss}>Đóng</button></div>}
-  </Modal>
+  </section>
 }

@@ -4,7 +4,7 @@ import { ScannerConnectionDialog } from './ScannerConnectionDialog'
 import type { ScanEvent } from './types'
 
 export function RemoteScannerButton({ onScan, className = 'button button-secondary', disabled = false, label = 'Kết nối điện thoại làm scanner' }: {
-  onScan: (event: ScanEvent) => void
+  onScan: (event: ScanEvent) => void | Promise<void>
   className?: string
   disabled?: boolean
   label?: string
