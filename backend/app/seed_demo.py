@@ -26,6 +26,7 @@ from app.models import (
     StockDocumentItem,
     StockMovement,
     Supplier,
+    User,
     Warehouse,
 )
 
@@ -560,6 +561,36 @@ def verify_seed(session: Session, rows: dict) -> dict[str, int]:
     return managed_counts
 
 
+# ---------------------------------------------------------------------------
+# RBAC demo users (idempotent – dùng uuid5 namespace)
+# ---------------------------------------------------------------------------
+_RBAC_USERS = [
+    {"name": "Admin Nguyễn",  "email": "admin@anphat.com",   "role": "Quản trị viên"},
+    {"name": "Quản lý Trần",  "email": "quanly@anphat.com",  "role": "Quản lý kho"},
+    {"name": "Thủ kho Lê",    "email": "thukho@anphat.com",  "role": "Nhân viên kho"},
+    {"name": "Viewer Phạm",   "email": "viewer@anphat.com",  "role": "Chỉ xem"},
+]
+
+
+def _seed_rbac_users(session: Session) -> None:
+    """Upsert 4 user demo RBAC – an toàn khi chạy nhiều lần."""
+    _ns = UUID("12345678-rbac-0000-demo-000000000000", version=4) if False else NAMESPACE_URL
+    for u in _RBAC_USERS:
+        uid = uuid5(_ns, f"rbac-user-{u['email']}")
+        stmt = (
+            pg_insert(User)
+            .values(id=uid, name=u["name"], email=u["email"], role=u["role"], active=True)
+            .on_conflict_do_update(
+                index_elements=[User.id],
+                set_={"name": u["name"], "role": u["role"], "active": True},
+            )
+        )
+        session.execute(stmt)
+    print("RBAC demo users đã seed xong. UUID:")
+    for u in _RBAC_USERS:
+        uid = uuid5(NAMESPACE_URL, f"rbac-user-{u['email']}")
+        print(f"  [{u['role']}] {u['name']} → X-User-Id: {uid}")
+
 def main() -> None:
     now = datetime.now(timezone.utc)
     rng = random.Random(20261010)
@@ -578,6 +609,7 @@ def main() -> None:
         insert_missing(session, AuditLog, rows["audits"])
         insert_missing(session, ScannerSession, rows["scanner_sessions"])
         insert_missing(session, ScanEvent, rows["scan_events"])
+        _seed_rbac_users(session)
         managed_counts = verify_seed(session, rows)
 
     print("Seed DEMO hoàn tất; dữ liệu ngoài namespace DEMO không bị cập nhật/xóa.")
