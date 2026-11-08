@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    JSON,
     Index,
     Integer,
     Numeric,
@@ -180,7 +181,24 @@ class AuditLog(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     actor_name: Mapped[str] = mapped_column(Text, nullable=False, default="Hệ thống")
-    __table_args__ = (Index("ix_audit_logs_created_at", "created_at"),)
+    action: Mapped[str] = mapped_column(Text, nullable=False, default="operation", server_default="operation")
+    outcome: Mapped[str] = mapped_column(Text, nullable=False, default="success", server_default="success")
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False, default=200, server_default="200")
+    details: Mapped[dict | None] = mapped_column(JSON)
+    __table_args__ = (
+        CheckConstraint("outcome IN ('success', 'rejected', 'replayed')", name="ck_audit_logs_outcome"),
+        Index("ix_audit_logs_created_at", "created_at"),
+    )
+
+
+class IdempotencyRequest(Base):
+    __tablename__ = "idempotency_requests"
+
+    idempotency_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_status: Mapped[int] = mapped_column(Integer, nullable=False)
+    response_json: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class ScannerSession(Base):

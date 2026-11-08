@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { ArrowDownLeft, ArrowUpRight, Camera, Check, Eye, Plus, Search, X } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Camera, Check, Eye, Minus, Plus, Search, X } from 'lucide-react'
 import { FormActions, Modal, PageHeader, Pagination, StatusBadge } from '../components/common'
 import { BarcodeScannerDialog } from '../components/BarcodeScannerDialog'
 import { useWarehouse } from '../data/WarehouseContext'
@@ -28,7 +28,9 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
     return product ? [{ productId: item.productId, quantity: item.quantity, unitCost: product.cost }] : []
   }))
   const linesRef = useRef(lines)
-  const scansInFlightRef = useRef(new Set<string>())
+  const processedScanEventIdsRef = useRef(new Set<string>())
+  const scanQueueRef = useRef(Promise.resolve())
+  const quickProductResolutionRef = useRef<(() => void) | null>(null)
   const updateLines = (change: (current: DocumentLine[]) => DocumentLine[]) => {
     const next = change(linesRef.current)
     linesRef.current = next
@@ -37,6 +39,7 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
   const [productId, setProductId] = useState(data.products[0]?.id ?? '')
   const [quantity, setQuantity] = useState(1)
   const [lastScan, setLastScan] = useState<{ barcode: string; status: 'pending' | 'success' | 'error'; message: string; product?: { name: string; sku: string; unit: string }; quantity?: number } | null>(null)
+  const [lastScannedProductId, setLastScannedProductId] = useState('')
   const [cameraOpen, setCameraOpen] = useState(false)
   const [quickProduct, setQuickProduct] = useState<{ barcode: string; sku: string; name: string; category: string; unit: string; cost: string; minStock: string } | null>(null)
   const [quickProductError, setQuickProductError] = useState('')
@@ -52,13 +55,16 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
     })
     setQuantity(1)
   }
+  const finishQuickProduct = () => {
+    setQuickProduct(null)
+    quickProductResolutionRef.current?.()
+    quickProductResolutionRef.current = null
+  }
   const addScannedProduct = async (barcode: string, format: ScanFormat, fromCamera = false) => {
     if (format === 'QR_CODE') {
       notify('QR không phải barcode sản phẩm.', 'error')
       return
     }
-    if (scansInFlightRef.current.has(barcode)) return
-    scansInFlightRef.current.add(barcode)
     setLastScan({ barcode, status: 'pending', message: 'Đang tra cứu sản phẩm trong kho…' })
     try {
       const product = await lookupBarcode(barcode)
@@ -70,12 +76,13 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
           setQuickProduct({ barcode, sku: '', name: '', category: data.categories[0] ?? '', unit: 'chiếc', cost: '0', minStock: '0' })
           setQuickProductError('')
           void getNextSku().then((sku) => setQuickProduct((current) => current?.barcode === barcode ? { ...current, sku } : current)).catch((error) => setQuickProductError(error instanceof Error ? error.message : 'Không lấy được SKU mới.'))
-        }
-        if (!fromCamera) notify(message, 'error')
+          if (!fromCamera) notify(message, 'error')
+          await new Promise<void>((resolve) => { quickProductResolutionRef.current = resolve })
+        } else if (!fromCamera) notify(message, 'error')
         return
       }
       if (product.status !== 'Đang kinh doanh') {
-        setQuickProduct(null)
+        finishQuickProduct()
         const message = `Sản phẩm ${product.name} đang ngừng kinh doanh.`
         setLastScan({ barcode, status: 'error', message, product: { name: product.name, sku: product.sku, unit: product.unit } })
         if (!fromCamera) notify(message, 'error')
@@ -93,17 +100,31 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
         ? current.map((line) => line.productId === product.id ? { ...line, quantity: line.quantity + 1 } : line)
         : [...current, { productId: product.id, quantity: 1, unitCost: product.cost }])
       const message = `Đã thêm ${product.name} vào phiếu ${type.toLowerCase()} dạng nháp.`
-      setQuickProduct(null)
+      finishQuickProduct()
+      setLastScannedProductId(product.id)
       setLastScan({ barcode, status: 'success', message, product: { name: product.name, sku: product.sku, unit: product.unit }, quantity: nextQuantity })
       if (!fromCamera) notify(message)
     } catch (error) {
       const message = error instanceof Error ? `Không thể tra cứu sản phẩm: ${error.message}` : 'Không thể tra cứu sản phẩm với backend.'
       setLastScan({ barcode, status: 'error', message })
       if (!fromCamera) notify(message, 'error')
-    } finally {
-      scansInFlightRef.current.delete(barcode)
     }
   }
+  const handleScanEvent = (event: ScanEvent, fromCamera = false): Promise<void> => {
+    if (processedScanEventIdsRef.current.has(event.eventId)) return scanEventTasksRef.current.get(event.eventId) ?? Promise.resolve()
+    processedScanEventIdsRef.current.add(event.eventId)
+    const task = scanQueueRef.current.then(() => addScannedProduct(event.barcode, event.format, fromCamera))
+    scanEventTasksRef.current.set(event.eventId, task)
+    scanQueueRef.current = task.catch(() => undefined)
+    return task
+  }
+  const scanEventTasksRef = useRef(new Map<string, Promise<void>>())
+  const updateLineQuantity = (lineProductId: string, rawQuantity: string) => {
+    const nextQuantity = Number(rawQuantity)
+    if (!Number.isInteger(nextQuantity) || nextQuantity < 1) return
+    updateLines((current) => current.map((line) => line.productId === lineProductId ? { ...line, quantity: nextQuantity } : line))
+  }
+  const adjustLineQuantity = (lineProductId: string, difference: number) => updateLines((current) => current.map((line) => line.productId === lineProductId ? { ...line, quantity: Math.max(1, line.quantity + difference) } : line))
   const createScannedProduct = async () => {
     if (!quickProduct || type !== 'Nhập kho' || creatingProduct) return
     const name = quickProduct.name.trim()
@@ -124,8 +145,9 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
         ? current.map((line) => line.productId === savedProduct.id ? { ...line, quantity: line.quantity + 1 } : line)
         : [...current, { productId: savedProduct.id, quantity: 1, unitCost: savedProduct.cost }])
       const message = `Đã tạo ${savedProduct.name} và thêm vào phiếu nhập dạng nháp.`
+      setLastScannedProductId(savedProduct.id)
       setLastScan({ barcode: savedProduct.barcode, status: 'success', message, product: { name: savedProduct.name, sku: savedProduct.sku, unit: savedProduct.unit }, quantity: 1 })
-      setQuickProduct(null)
+      finishQuickProduct()
       notify(message)
     } catch (error) {
       setQuickProductError(error instanceof Error ? error.message : 'Không thể tạo sản phẩm.')
@@ -175,12 +197,13 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
     onSave({ type, warehouseId, supplierId: type === 'Nhập kho' ? selectedSupplier?.id : undefined, partner: type === 'Nhập kho' ? selectedSupplier?.name ?? '' : partner.trim(), note: note.trim(), lines })
   }
   return <form onSubmit={submit}><div className="form-grid"><label className="form-field"><span>Kho {type === 'Nhập kho' ? 'nhận' : 'xuất'} <b>*</b></span><select required value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)}>{data.warehouses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>{type === 'Nhập kho' ? <div className="form-field"><span>Nhà cung cấp <b>*</b></span>{loading ? <small className="field-help">Đang tải danh sách nhà cung cấp…</small> : loadError ? <><small className="field-error">{loadError}</small><button type="button" className="button button-secondary supplier-create-link" onClick={retryLoad}>Tải lại dữ liệu</button></> : data.suppliers.some((supplier) => supplier.active) ? <div className="supplier-combobox" ref={supplierComboboxRef}><input role="combobox" aria-autocomplete="list" aria-expanded={supplierListOpen && supplierQuery.trim().length > 0} aria-controls="supplier-suggestions" aria-activedescendant={supplierListOpen && activeSupplierIndex >= 0 && availableSuppliers[activeSupplierIndex] ? `supplier-option-${availableSuppliers[activeSupplierIndex].id}` : undefined} required={!selectedSupplier} value={supplierQuery} onFocus={() => { if (!selectedSupplier && supplierQuery.trim()) setSupplierListOpen(true) }} onChange={(event) => { setSupplierQuery(event.target.value); setSupplierId(''); setActiveSupplierIndex(-1); setSupplierListOpen(Boolean(event.target.value.trim())) }} onKeyDown={handleSupplierKeyDown} placeholder="Nhập tên, mã hoặc điện thoại nhà cung cấp" aria-label="Tìm và chọn nhà cung cấp" />{supplierListOpen && supplierQuery.trim() && <div className="supplier-suggestions" id="supplier-suggestions" role="listbox" aria-label="Nhà cung cấp phù hợp">{availableSuppliers.length ? availableSuppliers.map((supplier, index) => <button type="button" role="option" aria-selected={index === activeSupplierIndex} id={`supplier-option-${supplier.id}`} key={supplier.id} className={`supplier-suggestion${index === activeSupplierIndex ? ' active' : ''}`} onMouseEnter={() => setActiveSupplierIndex(index)} onClick={() => selectSupplier(supplier.id)}><strong>{supplier.name}</strong><span>{supplier.code}{supplier.phone ? ` · ${supplier.phone}` : ''}</span></button>) : <div className="supplier-suggestion-empty">Không tìm thấy nhà cung cấp phù hợp.</div>}</div>}{selectedSupplier && <small className="field-help">Đã chọn {selectedSupplier.code} · mã nhà cung cấp sẽ được liên kết với phiếu.</small>}</div> : <><small className="field-help">Chưa có nhà cung cấp đang hoạt động.</small><Link className="button button-secondary supplier-create-link" to="/suppliers" onClick={onClose}>Thêm nhà cung cấp</Link></>}</div> : <label className="form-field"><span>Người nhận / đơn hàng <b>*</b></span><input required value={partner} onChange={(event) => setPartner(event.target.value)} placeholder="Tên người nhận hoặc mã đơn hàng" /></label>}</div>
-    <div className="form-section-title"><div><strong>Sản phẩm trong phiếu</strong><small>{type === 'Nhập kho' ? 'Dùng điện thoại quét QR để kết nối, sau đó quét barcode sản phẩm.' : 'Quét barcode để tra cứu rồi thêm vào bản nháp; quét lại sẽ tăng số lượng.'}</small></div>{type === 'Nhập kho' && <div className="scanner-actions-group"><RemoteScannerButton onScan={(event: ScanEvent) => { void addScannedProduct(event.barcode, event.format) }} disabled={saving} className="button button-primary scanner-context-button" label="Quét bằng điện thoại (QR)" /><button type="button" className="button button-secondary scanner-context-button" onClick={() => setCameraOpen(true)} disabled={saving}><Camera size={16} />Quét trên thiết bị này</button></div>}</div>
+      <div className="form-section-title"><div><strong>Sản phẩm trong phiếu</strong><small>{type === 'Nhập kho' ? 'Quét barcode bằng điện thoại hoặc camera trực tiếp; quét lại sẽ cộng số lượng.' : 'Quét barcode để tra cứu rồi thêm vào bản nháp; hệ thống kiểm tra tồn trước mỗi lượt quét.'}</small></div>{type === 'Nhập kho' && <div className="scanner-actions-group"><RemoteScannerButton onScan={handleScanEvent} disabled={saving} className="button button-primary scanner-context-button" label="Quét bằng điện thoại (QR)" /><button type="button" className="button button-secondary scanner-context-button" onClick={() => setCameraOpen(true)} disabled={saving}><Camera size={16} />Quét trên thiết bị này</button></div>}</div>
+      {type === 'Nhập kho' && <div className="document-scan-summary" aria-live="polite"><div><span>Loại sản phẩm</span><strong>{lines.length}</strong></div><div><span>Tổng số lượng</span><strong>{lines.reduce((sum, line) => sum + line.quantity, 0)}</strong></div><div><span>Giá trị dự kiến</span><strong>{money.format(total)}</strong></div></div>}
     {lastScan && <div className={`scanner-last-result ${lastScan.status}`} role="status"><div><strong>{lastScan.product?.name ?? lastScan.barcode}</strong><small>{lastScan.product ? `SKU ${lastScan.product.sku} · Barcode ${lastScan.barcode} · ${lastScan.product.unit}` : lastScan.barcode}</small></div><span>{lastScan.status === 'success' && lastScan.quantity ? `Số lượng phiếu: ${lastScan.quantity} ${lastScan.product?.unit ?? ''}` : lastScan.message}{lastScan.status === 'error' && !lastScan.product && <Link to={`/products?q=${encodeURIComponent(lastScan.barcode)}`} target="_blank" rel="noreferrer">Mở quản lý sản phẩm</Link>}</span></div>}
-    {quickProduct && type === 'Nhập kho' && <section className="scanner-product-create" aria-label="Tạo nhanh sản phẩm từ barcode"><div className="scanner-product-create-heading"><div><strong>Tạo sản phẩm từ mã vừa quét</strong><small>Barcode được giữ nguyên; sản phẩm sẽ vào danh mục chung và dòng phiếu nhập vẫn ở trạng thái nháp.</small></div><button type="button" className="icon-button" aria-label="Hủy tạo sản phẩm" onClick={() => setQuickProduct(null)}><X size={16} /></button></div><div className="form-grid"><label className="form-field"><span>Barcode</span><input value={quickProduct.barcode} readOnly /></label><label className="form-field"><span>Mã SKU <b>*</b></span><input required value={quickProduct.sku} onChange={(event) => setQuickProduct((current) => current ? { ...current, sku: event.target.value.toUpperCase() } : current)} /></label><label className="form-field full"><span>Tên sản phẩm <b>*</b></span><input required autoFocus value={quickProduct.name} onChange={(event) => setQuickProduct((current) => current ? { ...current, name: event.target.value } : current)} /></label><label className="form-field"><span>Danh mục <b>*</b></span><select required value={quickProduct.category} onChange={(event) => setQuickProduct((current) => current ? { ...current, category: event.target.value } : current)}><option value="">Chọn danh mục</option>{data.categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><label className="form-field"><span>Đơn vị tính <b>*</b></span><input required value={quickProduct.unit} onChange={(event) => setQuickProduct((current) => current ? { ...current, unit: event.target.value } : current)} /></label><label className="form-field"><span>Giá nhập (₫) <b>*</b></span><input type="number" min="0" step="0.01" required value={quickProduct.cost} onChange={(event) => setQuickProduct((current) => current ? { ...current, cost: event.target.value } : current)} /></label><label className="form-field"><span>Ngưỡng tồn tối thiểu</span><input type="number" min="0" step="1" value={quickProduct.minStock} onChange={(event) => setQuickProduct((current) => current ? { ...current, minStock: event.target.value } : current)} /></label></div>{data.categories.length === 0 && <small className="field-error">Cần có danh mục trước khi tạo sản phẩm.</small>}{quickProductError && <small className="field-error" role="alert">{quickProductError}</small>}<div className="form-actions"><button type="button" className="button button-secondary" onClick={() => setQuickProduct(null)} disabled={creatingProduct}>Hủy</button><button type="button" className="button button-primary" onClick={() => void createScannedProduct()} disabled={creatingProduct || !quickProduct.sku || !quickProduct.name.trim() || !quickProduct.category || !quickProduct.unit.trim() || !data.categories.length}>{creatingProduct ? 'Đang lưu sản phẩm…' : 'Lưu sản phẩm & thêm vào phiếu'}</button></div></section>}
+    {quickProduct && type === 'Nhập kho' && <section className="scanner-product-create" aria-label="Tạo nhanh sản phẩm từ barcode"><div className="scanner-product-create-heading"><div><strong>Tạo sản phẩm từ mã vừa quét</strong><small>Barcode được giữ nguyên; sản phẩm sẽ vào danh mục chung và dòng phiếu nhập vẫn ở trạng thái nháp.</small></div><button type="button" className="icon-button" aria-label="Hủy tạo sản phẩm" onClick={finishQuickProduct}><X size={16} /></button></div><div className="form-grid"><label className="form-field"><span>Barcode</span><input value={quickProduct.barcode} readOnly /></label><label className="form-field"><span>Mã SKU <b>*</b></span><input required value={quickProduct.sku} onChange={(event) => setQuickProduct((current) => current ? { ...current, sku: event.target.value.toUpperCase() } : current)} /></label><label className="form-field full"><span>Tên sản phẩm <b>*</b></span><input required autoFocus value={quickProduct.name} onChange={(event) => setQuickProduct((current) => current ? { ...current, name: event.target.value } : current)} /></label><label className="form-field"><span>Danh mục <b>*</b></span><select required value={quickProduct.category} onChange={(event) => setQuickProduct((current) => current ? { ...current, category: event.target.value } : current)}><option value="">Chọn danh mục</option>{data.categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><label className="form-field"><span>Đơn vị tính <b>*</b></span><input required value={quickProduct.unit} onChange={(event) => setQuickProduct((current) => current ? { ...current, unit: event.target.value } : current)} /></label><label className="form-field"><span>Giá nhập (₫) <b>*</b></span><input type="number" min="0" step="0.01" required value={quickProduct.cost} onChange={(event) => setQuickProduct((current) => current ? { ...current, cost: event.target.value } : current)} /></label><label className="form-field"><span>Ngưỡng tồn tối thiểu</span><input type="number" min="0" step="1" value={quickProduct.minStock} onChange={(event) => setQuickProduct((current) => current ? { ...current, minStock: event.target.value } : current)} /></label></div>{data.categories.length === 0 && <small className="field-error">Cần có danh mục trước khi tạo sản phẩm.</small>}{quickProductError && <small className="field-error" role="alert">{quickProductError}</small>}<div className="form-actions"><button type="button" className="button button-secondary" onClick={finishQuickProduct} disabled={creatingProduct}>Hủy</button><button type="button" className="button button-primary" onClick={() => void createScannedProduct()} disabled={creatingProduct || !quickProduct.sku || !quickProduct.name.trim() || !quickProduct.category || !quickProduct.unit.trim() || !data.categories.length}>{creatingProduct ? 'Đang lưu sản phẩm…' : 'Lưu sản phẩm & thêm vào phiếu'}</button></div></section>}
     <div className="add-line-row"><select value={productId} onChange={(event) => setProductId(event.target.value)}>{data.products.filter((item) => item.status === 'Đang kinh doanh').map((item) => <option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</select><div className="quantity-input-wrap"><input aria-label="Số lượng" type="number" min="1" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} />{type === 'Xuất kho' && <small>Còn {available(productId)}</small>}</div><button type="button" className="button button-secondary add-line-button" onClick={addLine}><Plus size={15} />Thêm</button></div>
-     {lines.length > 0 && <div className="line-items">{lines.map((line) => { const product = data.products.find((item) => item.id === line.productId); return <div className="line-item" key={line.productId}><div className="line-product"><strong>{product?.name}</strong><small>{product?.sku} · {line.quantity} {product?.unit}</small></div>{type === 'Nhập kho' && <label className="line-cost"><span>Đơn giá</span><input type="number" min="0" value={line.unitCost} onChange={(event) => updateLines((current) => current.map((item) => item.productId === line.productId ? { ...item, unitCost: Number(event.target.value) } : item))} /></label>}<strong className="line-total">{money.format(line.quantity * line.unitCost)}</strong><button type="button" className="line-remove" aria-label="Xóa sản phẩm" onClick={() => updateLines((current) => current.filter((item) => item.productId !== line.productId))}><X size={15} /></button></div>})}<div className="line-grand-total"><span>Tổng giá trị phiếu</span><strong>{money.format(total)}</strong></div></div>}
-      <label className="form-field form-note"><span>Ghi chú</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Thông tin bổ sung cho phiếu..." /></label><FormActions onCancel={onClose} submit={saving ? 'Đang lưu…' : 'Lưu phiếu nháp'} disabled={saving} />{cameraOpen && type === 'Nhập kho' && <BarcodeScannerDialog continuous onClose={() => setCameraOpen(false)} onDetected={(barcode, format) => { void addScannedProduct(barcode, format, true) }} />}</form>
+      {lines.length > 0 && <div className="line-items">{lines.map((line) => { const product = data.products.find((item) => item.id === line.productId); return <div className={`line-item ${lastScannedProductId === line.productId ? 'line-item-scanned' : ''}`} key={line.productId}><div className="line-product"><strong>{product?.name}</strong><small>{product?.sku} · {product?.barcode || 'Chưa có barcode'} · {product?.unit}</small></div><div className="document-line-quantity"><button type="button" aria-label={`Giảm số lượng ${product?.name ?? ''}`} disabled={line.quantity <= 1} onClick={() => adjustLineQuantity(line.productId, -1)}><Minus size={14} /></button><label className="line-quantity"><span>Số lượng</span><input aria-label={`Số lượng ${product?.name ?? ''}`} type="number" min="1" step="1" value={line.quantity} onChange={(event) => updateLineQuantity(line.productId, event.target.value)} /></label><button type="button" aria-label={`Tăng số lượng ${product?.name ?? ''}`} onClick={() => adjustLineQuantity(line.productId, 1)}><Plus size={14} /></button></div>{type === 'Nhập kho' && <label className="line-cost"><span>Đơn giá</span><input type="number" min="0" value={line.unitCost} onChange={(event) => updateLines((current) => current.map((item) => item.productId === line.productId ? { ...item, unitCost: Number(event.target.value) } : item))} /></label>}<strong className="line-total">{money.format(line.quantity * line.unitCost)}</strong><button type="button" className="line-remove" aria-label={`Xóa ${product?.name ?? 'sản phẩm'}`} onClick={() => updateLines((current) => current.filter((item) => item.productId !== line.productId))}><X size={15} /></button></div>})}<div className="line-grand-total"><span>Tổng giá trị phiếu</span><strong>{money.format(total)}</strong></div></div>}
+       <label className="form-field form-note"><span>Ghi chú</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Thông tin bổ sung cho phiếu..." /></label><FormActions onCancel={onClose} submit={saving ? 'Đang lưu…' : 'Lưu phiếu nháp'} disabled={saving} />{cameraOpen && type === 'Nhập kho' && <BarcodeScannerDialog continuous onClose={() => setCameraOpen(false)} onDetected={(barcode, format) => { handleScanEvent({ eventId: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, sessionId: 'direct-camera', barcode, format, scannedAt: new Date().toISOString() }, true) }} />}</form>
 }
 
 export function DocumentsPage({ type }: { type: 'Nhập kho' | 'Xuất kho' }) {

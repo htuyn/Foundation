@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 
 export interface ScannerBasketItem {
   productId: string
@@ -19,21 +19,34 @@ const ScannerBasketContext = createContext<ScannerBasketValue | null>(null)
 
 export function ScannerBasketProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ScannerBasketItem[]>([])
+  const itemsRef = useRef(items)
   const value = useMemo<ScannerBasketValue>(() => ({
     items,
     addProduct: (productId, barcode, scannedAt = new Date().toISOString()) => {
-      const exists = items.some((item) => item.productId === productId)
-      setItems((current) => {
-        const previous = current.find((item) => item.productId === productId)
-        return previous
-          ? current.map((item) => item.productId === productId ? { ...item, quantity: item.quantity + 1, barcode, lastScannedAt: scannedAt } : item)
-          : [...current, { productId, quantity: 1, barcode, lastScannedAt: scannedAt }]
-      })
+      const current = itemsRef.current
+      const exists = current.some((item) => item.productId === productId)
+      const next = exists
+        ? current.map((item) => item.productId === productId ? { ...item, quantity: item.quantity + 1, barcode, lastScannedAt: scannedAt } : item)
+        : [...current, { productId, quantity: 1, barcode, lastScannedAt: scannedAt }]
+      itemsRef.current = next
+      setItems(next)
       return exists ? 'incremented' : 'added'
     },
-    updateQuantity: (productId, quantity) => setItems((current) => current.map((item) => item.productId === productId ? { ...item, quantity: Math.max(1, Math.floor(quantity)) } : item)),
-    removeProduct: (productId) => setItems((current) => current.filter((item) => item.productId !== productId)),
-    clear: () => setItems([]),
+    updateQuantity: (productId, quantity) => {
+      if (!Number.isInteger(quantity) || quantity < 1) return
+      const next = itemsRef.current.map((item) => item.productId === productId ? { ...item, quantity } : item)
+      itemsRef.current = next
+      setItems(next)
+    },
+    removeProduct: (productId) => {
+      const next = itemsRef.current.filter((item) => item.productId !== productId)
+      itemsRef.current = next
+      setItems(next)
+    },
+    clear: () => {
+      itemsRef.current = []
+      setItems([])
+    },
   }), [items])
   return <ScannerBasketContext.Provider value={value}>{children}</ScannerBasketContext.Provider>
 }

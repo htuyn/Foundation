@@ -15,7 +15,8 @@ PostgreSQL is the source of truth when `VITE_API_BASE_URL` is configured. SQLAlc
 | `stock_movements` | UUID PK, signed nonzero `quantity_delta`, movement type check, product/warehouse/document-line references, time/product indexes | `Transaction`; output quantity maps to positive inbound/outbound and signed adjustment |
 | `suppliers` | UUID PK, unique case-insensitive code | `Supplier`; deleting suppliers referenced by document FK or legacy inbound partner is blocked |
 | `users` | UUID PK, unique case-insensitive email, frontend role check | `UserRecord` only; no password, auth, or authorization |
-| `audit_logs` | UUID PK, created-time index, actor text | `AuditRecord`; actor currently system snapshot, not identity FK |
+| `audit_logs` | UUID PK, created-time index, actor, action, outcome, HTTP status and JSON details | `AuditRecord`; actor defaults to system because authentication is not implemented |
+| `idempotency_requests` | Idempotency key PK/UNIQUE, SHA-256 request fingerprint, original status/JSON response | Replays identical `POST /documents` requests without creating a second document |
 | `scanner_sessions` | Owner/device token hashes, expiry, status check | Future backend scanner session contract |
 | `scanner_qr_tickets` | Unique nonce hash, session FK, expiry/consumed/revoked timestamps | One-use scanner QR nonce; distinct from product barcode |
 | `scan_events` | Client event UUID PK, session FK, format check, session/time index | Scanner event; does not modify stock |
@@ -25,7 +26,8 @@ PostgreSQL is the source of truth when `VITE_API_BASE_URL` is configured. SQLAlc
 - Confirming a stock document and changing inventory, inserting movements, changing document status and writing audit records occur in one PostgreSQL transaction.
 - Outbound updates are conditional SQL decrements (`quantity >= requested`) to prevent concurrent oversell. Failure rolls back every line and movement.
 - Reconfirming an already confirmed document returns its current state without duplicating movements.
-- Adjustments require a nonzero signed integer and reason; insufficient quantity rolls back.
+- Document creation accepts an `Idempotency-Key`; its unique key and stored response commit atomically with the draft. Same-key/same-body retries replay; same-key/different-body returns 409.
+- Adjustments require a nonzero signed integer and reason; insufficient quantity returns 400 `INSUFFICIENT_STOCK` and rolls back.
 - Movements are immutable operational history by application behavior; correction should be a compensating adjustment/document rather than deleting history.
 - Seed inventory and historical demo movements are not reconciled. Database initialization does not import demo data; opening balances must be explicitly decided before importing it.
 
@@ -34,4 +36,6 @@ PostgreSQL is the source of truth when `VITE_API_BASE_URL` is configured. SQLAlc
 - All timestamps use timezone-aware PostgreSQL `TIMESTAMPTZ` and are serialized with offsets.
 - `NUMERIC(14,2)` stores cost; quantities are integers because frontend types use `number` for unit counts.
 - No API authentication is implemented; database user accounts are presentation records only. Do not expose this development API to untrusted networks.
+- API 400/403/409 rejections are persisted to Audit Log. Real person attribution requires the authentication integration to set a trusted request actor; current fallback is `Hệ thống`.
+- Backup/restore scripts and staging procedure: `docs/postgres-backup-restore.md`. A staging restore has not been run from this workspace.
 - Scanner WebSocket fan-out is in process and not suitable for multiple backend workers without shared pub/sub.

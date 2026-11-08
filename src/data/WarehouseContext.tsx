@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { seedData } from './seed'
 import type { Product, Supplier, UserRecord, Warehouse, WarehouseDocument, WarehouseState } from '../types'
 
@@ -72,6 +72,7 @@ export function WarehouseProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(apiEnabled)
   const [loadError, setLoadError] = useState('')
   const [loadAttempt, setLoadAttempt] = useState(0)
+  const documentIdempotencyKeys = useRef(new Map<string, string>())
 
   const reloadFromApi = async () => {
     const snapshot = await apiRequest<WarehouseState>('/bootstrap')
@@ -271,8 +272,16 @@ export function WarehouseProvider({ children }: { children: ReactNode }) {
       },
       saveDocument: async (document) => {
         if (apiEnabled) {
-          const result = await apiRequest<{ id: string }>('/documents', { method: 'POST', body: JSON.stringify(document) })
+          const body = JSON.stringify(document)
+          const idempotencyKey = documentIdempotencyKeys.current.get(body) ?? id()
+          documentIdempotencyKeys.current.set(body, idempotencyKey)
+          const result = await apiRequest<{ id: string }>('/documents', {
+            method: 'POST',
+            headers: { 'Idempotency-Key': idempotencyKey },
+            body,
+          })
           await reloadFromApi()
+          documentIdempotencyKeys.current.delete(body)
           return result.id
         }
         const documentId = id()

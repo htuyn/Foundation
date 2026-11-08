@@ -413,9 +413,16 @@ def test_inbound_outbound_confirmation_updates_stock_atomically() -> None:
             product_id = product_response.json()["id"]
             warehouse_id = warehouse_response.json()["id"]
 
-            def create_document(document_type: str, quantity: int, selected_supplier_id: str | None = None) -> str:
+            def create_document(
+                document_type: str,
+                quantity: int,
+                selected_supplier_id: str | None = None,
+                idempotency_key: str | None = None,
+            ) -> str:
+                headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
                 response = client.post(
                     "/api/v1/documents",
+                    headers=headers,
                     json={
                         "type": document_type,
                         "warehouseId": warehouse_id,
@@ -458,10 +465,27 @@ def test_inbound_outbound_confirmation_updates_stock_atomically() -> None:
                     "lines": [{"productId": product_id, "quantity": 1, "unitCost": 100}],
                 },
             )
-            assert inactive_supplier_request.status_code == 409
+            assert inactive_supplier_request.status_code == 400
             assert inactive_supplier_request.json()["error"]["code"] == "SUPPLIER_INACTIVE"
 
-            inbound_id = create_document("Nhập kho", 10, supplier_response.json()["id"])
+            inbound_key = f"inbound-{suffix}"
+            inbound_id = create_document("Nhập kho", 10, supplier_response.json()["id"], inbound_key)
+            replayed_inbound_id = create_document("Nhập kho", 10, supplier_response.json()["id"], inbound_key)
+            assert replayed_inbound_id == inbound_id
+            changed_request_response = client.post(
+                "/api/v1/documents",
+                headers={"Idempotency-Key": inbound_key},
+                json={
+                    "type": "Nhập kho",
+                    "warehouseId": warehouse_id,
+                    "supplierId": supplier_response.json()["id"],
+                    "partner": "Integration test",
+                    "note": "different payload",
+                    "lines": [{"productId": product_id, "quantity": 10, "unitCost": 100}],
+                },
+            )
+            assert changed_request_response.status_code == 409
+            assert changed_request_response.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
             inbound_document = client.get(f"/api/v1/documents/{inbound_id}").json()
             assert inbound_document["supplierId"] == supplier_response.json()["id"]
             assert inbound_document["partner"] == supplier_response.json()["name"]
@@ -472,7 +496,7 @@ def test_inbound_outbound_confirmation_updates_stock_atomically() -> None:
 
             insufficient_outbound_id = create_document("Xuất kho", 8)
             insufficient_response = client.post(f"/api/v1/documents/{insufficient_outbound_id}/confirm")
-            assert insufficient_response.status_code == 409
+            assert insufficient_response.status_code == 400
             assert insufficient_response.json()["error"]["code"] == "INSUFFICIENT_STOCK"
 
             snapshot = client.get("/api/v1/bootstrap").json()
@@ -481,6 +505,16 @@ def test_inbound_outbound_confirmation_updates_stock_atomically() -> None:
             assert inventory["quantity"] == 7
             assert failed_document["status"] == "Bản nháp"
             assert len([row for row in snapshot["transactions"] if row["productId"] == product_id]) == 2
+            rejected_audit = next(
+                row for row in snapshot["auditLogs"]
+                if row["result"] == "rejected" and row["details"]["errorCode"] == "INSUFFICIENT_STOCK"
+            )
+            assert rejected_audit["statusCode"] == 400
+            duplicate_key_audit = next(
+                row for row in snapshot["auditLogs"]
+                if row["result"] == "rejected" and row["details"]["errorCode"] == "IDEMPOTENCY_KEY_REUSED"
+            )
+            assert duplicate_key_audit["statusCode"] == 409
     finally:
         if previous_override is None:
             app.dependency_overrides.pop(get_db, None)

@@ -11,13 +11,14 @@ from app.core.rbac import CurrentUser, require_permission
 from app.db.session import get_db
 from app.models import AuditLog, Category, Inventory, Product, StockDocument, StockDocumentItem, StockMovement, Supplier, User, Warehouse
 from app.schemas import CategoryCreate, InventoryAdjustmentInput, ProductInput, SupplierInput, UserInput, WarehouseInput
+from app.services.audit_context import current_actor_name
 from app.services.serialization import audit_dict, product_dict, supplier_dict, user_dict, warehouse_dict
 
 router = APIRouter()
 
 
-def add_audit(db: Session, message: str, actor: str = "Hệ thống") -> None:
-    db.add(AuditLog(message=message, actor_name=actor))
+def add_audit(db: Session, message: str, actor: str | None = None) -> None:
+    db.add(AuditLog(message=message, actor_name=actor or current_actor_name(db), action=message, outcome="success"))
 
 
 def integrity_error(error: IntegrityError) -> ApiError:
@@ -381,35 +382,36 @@ def list_inventory(warehouseId: UUID | None = None, user: User = Depends(require
 
 @router.post("/inventory/adjust")
 def adjust_inventory(payload: InventoryAdjustmentInput, user: CurrentUser, db: Session = Depends(get_db)):
-    product = db.scalar(select(Product).where(Product.id == payload.productId).with_for_update())
-    warehouse = db.scalar(select(Warehouse).where(Warehouse.id == payload.warehouseId).with_for_update())
-    if not product or not warehouse:
-        raise ApiError(404, "INVENTORY_REFERENCE_NOT_FOUND", "Không tìm thấy sản phẩm hoặc kho.")
-    row = db.scalar(
-        select(Inventory)
-        .where(Inventory.product_id == payload.productId, Inventory.warehouse_id == payload.warehouseId)
-        .with_for_update()
-    )
-    current = row.quantity if row else 0
-    if current + payload.quantity < 0:
-        raise ApiError(409, "INSUFFICIENT_STOCK", f"Điều chỉnh sẽ làm tồn kho âm (hiện có {current}).")
-    code = f"DC-{datetime.now(timezone.utc).year}-{uuid4().hex[:8].upper()}"
-    if row:
-        row.quantity = current + payload.quantity
-    else:
-        db.add(Inventory(product_id=payload.productId, warehouse_id=payload.warehouseId, quantity=payload.quantity, location="Khu mới"))
-    movement = StockMovement(
-        code=code,
-        movement_type="Điều chỉnh",
-        product_id=payload.productId,
-        warehouse_id=payload.warehouseId,
-        quantity_delta=payload.quantity,
-        actor_name=user.name,
-        source=payload.reason,
-    )
-    db.add(movement)
-    add_audit(db, f"Điều chỉnh tồn kho {code}: {payload.reason}", user.name)
-    db.flush()
+    with db.begin():
+        product = db.scalar(select(Product).where(Product.id == payload.productId).with_for_update())
+        warehouse = db.scalar(select(Warehouse).where(Warehouse.id == payload.warehouseId).with_for_update())
+        if not product or not warehouse:
+            raise ApiError(404, "INVENTORY_REFERENCE_NOT_FOUND", "Không tìm thấy sản phẩm hoặc kho.")
+        row = db.scalar(
+            select(Inventory)
+            .where(Inventory.product_id == payload.productId, Inventory.warehouse_id == payload.warehouseId)
+            .with_for_update()
+        )
+        current = row.quantity if row else 0
+        if current + payload.quantity < 0:
+            raise ApiError(400, "INSUFFICIENT_STOCK", f"Điều chỉnh sẽ làm tồn kho âm (hiện có {current}).")
+        code = f"DC-{datetime.now(timezone.utc).year}-{uuid4().hex[:8].upper()}"
+        if row:
+            row.quantity = current + payload.quantity
+        else:
+            db.add(Inventory(product_id=payload.productId, warehouse_id=payload.warehouseId, quantity=payload.quantity, location="Khu mới"))
+        movement = StockMovement(
+            code=code,
+            movement_type="Điều chỉnh",
+            product_id=payload.productId,
+            warehouse_id=payload.warehouseId,
+            quantity_delta=payload.quantity,
+            actor_name=user.name,
+            source=payload.reason,
+        )
+        db.add(movement)
+        add_audit(db, f"Điều chỉnh tồn kho {code}: {payload.reason}", user.name)
+        db.flush()
     return {
         "id": str(movement.id), "code": movement.code, "type": movement.movement_type,
         "productId": str(movement.product_id), "warehouseId": str(movement.warehouse_id),

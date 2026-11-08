@@ -113,6 +113,10 @@ def audit_dict(log: AuditLog) -> dict[str, Any]:
         "message": log.message,
         "createdAt": log.created_at.isoformat(),
         "actor": log.actor_name,
+        "action": log.action,
+        "result": log.outcome,
+        "statusCode": log.status_code,
+        "details": log.details,
     }
 
 

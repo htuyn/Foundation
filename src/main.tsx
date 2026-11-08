@@ -6,6 +6,8 @@ import { WarehouseProvider } from './data/WarehouseContext'
 import { ScannerBasketProvider } from './features/scanner/ScannerBasketContext'
 import './styles.css'
 
+document.documentElement.dataset.theme = 'light'
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>

@@ -46,6 +46,8 @@ Chạy frontend bằng Node ngoài Compose ở HTTP vẫn được hỗ trợ đ
 
 Chạy backend trực tiếp ngoài Docker: cài `backend/requirements.txt`, chỉ sao chép `backend/.env.example` thành `backend/.env` nếu file này chưa tồn tại, đặt `POSTGRES_HOST=localhost`, khởi động PostgreSQL riêng, sau đó từ `backend/` chạy `alembic upgrade head` và `uvicorn app.main:app --reload`.
 
+Triển khai backend trên Render và cấu hình CORS cho Vercel Production/Preview: xem [`docs/render-deployment.md`](docs/render-deployment.md).
+
 Kiểm thử backend (không cần DB cho contract/validation tests):
 
 ```powershell

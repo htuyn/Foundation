@@ -2,6 +2,7 @@ from app.models.entities import (
     AuditLog,
     Category,
     Inventory,
+    IdempotencyRequest,
     Product,
     ScanEvent,
     ScannerQrTicket,
@@ -15,7 +16,7 @@ from app.models.entities import (
 )
 
 __all__ = [
-    "AuditLog", "Category", "Inventory", "Product", "ScanEvent",
+    "AuditLog", "Category", "Inventory", "IdempotencyRequest", "Product", "ScanEvent",
     "ScannerQrTicket", "ScannerSession", "StockDocument", "StockDocumentItem",
     "StockMovement", "Supplier", "User", "Warehouse",
 ]
