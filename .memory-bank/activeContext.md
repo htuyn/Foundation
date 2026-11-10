@@ -2,7 +2,7 @@
 
 ## Trạng thái hiện tại
 - Đang duy trì ứng dụng quản lý kho React/Vite + FastAPI/PostgreSQL.
-- Tích hợp CRUD, phiếu, tồn, audit và scanner API hiện đã có trong source. Xem `docs/integration-audit.md` để biết kết quả kiểm chứng và các mismatch còn tồn tại.
+- Tích hợp CRUD, phiếu, tồn, audit, scanner API và xác thực/RBAC phía backend hiện đã có trong source. Xem `docs/integration-audit.md` để biết kết quả kiểm chứng và các mismatch còn tồn tại.
 - Frontend mặc định dùng snapshot/seed local; API mode được bật bởi `VITE_API_BASE_URL`.
 - Memory Bank được khởi tạo ngày 2026-10-10 từ README, cấu hình, cấu trúc source và tài liệu audit hiện có.
 - Camera scanner dùng ZXing cho tạo/sửa sản phẩm và tra cứu trên trang barcode; đã bổ sung nhập thủ công trong modal và dừng media tracks khi đóng, lỗi hoặc quét được.
@@ -18,7 +18,7 @@
 - Có script `scripts/start-lan-vite.ps1` cho trường hợp backend chạy host tại `127.0.0.1:8000` và Vite chạy trực tiếp; mặc định cổng `5174` để không đè tiến trình Vite cũ ở `5173`. Script đặt API proxy và QR origin từ IPv4 LAN, sinh cert riêng; CA cần được người dùng tin cậy thủ công trên Windows và điện thoại. Tại lần kiểm tra workspace 2026-10-11, không có Vite/backend listener; Docker daemon không kết nối được; PostgreSQL chỉ đang lắng nghe cổng `5432`, không phải cổng Compose `5433`. Vì vậy các URL/camera/QR LAN chưa thể kiểm thử runtime trong lần này.
 - Sửa lỗi scanner config 2026-10-11: `.env` local có UTF-8 BOM trước `VITE_API_BASE_URL`, khiến Vite bỏ qua biến đầu tiên và frontend chọn `demo`; đã bỏ riêng BOM, Vite runtime hiện inject `/api/v1`. `.env.example` không có BOM và đã bổ sung hướng dẫn encoding/HTTPS LAN. Tại lần kiểm tra cấu hình, backend chưa lắng nghe cổng `8000`, Vite proxy trả `502`; API session được kiểm thử trực tiếp bằng TestClient với SQLite tạm.
 - QR follow-up 2026-10-11: backend `/health/ready` trả 200 và session/QR routes có trong OpenAPI. `VITE_SCANNER_MOBILE_BASE_URL` chưa đặt; Vite đang HTTP `5173`, nên modal lấy `window.location.origin`, `baseUrlError` chặn gọi endpoint nonce và QR render. HTTPS `5174` chưa listen; chứng chỉ hiện có SAN `192.168.16.109`, nhưng Windows network profile là Public nên không bật server LAN. Cảnh báo URL sai được đưa thêm vào role alert; chưa phát sinh QR hoặc xác nhận pairing thật.
-- Giới hạn cần nêu: backend scanner lưu scan event, desktop xử lý lookup và form state; chi tiết dòng phiếu chưa persist PostgreSQL sau từng scan, session chưa gắn document ID ở DB. Không có user auth/authorization; không mở dịch vụ trên mạng không tin cậy.
+- Ghi nhận lịch sử tại thời điểm 2026-10-11: backend scanner lưu scan event, desktop xử lý lookup và form state; chi tiết dòng phiếu chưa persist PostgreSQL sau từng scan, session chưa gắn document ID ở DB. Authentication/RBAC chưa có ở mốc này; trạng thái mới cập nhật ngày 2026-11-10 ở phần dưới.
 - Sửa 404 deep-link mobile scanner trên Vercel: thêm `vercel.json` SPA rewrite về `/index.html`; route React `/scanner/mobile`, query `mode/sessionId/expiresAt`, fragment `qrNonce/qrExpiresAt`, xác thực join và WSS vẫn giữ nguyên. Thêm Node built-in routing contract tests và ghi hướng dẫn Root Directory/config production Vercel. Cần kiểm tra Root Directory và các biến `VITE_*` trong dashboard Vercel, rồi xác minh bằng deployment thực tế; chưa có quyền kiểm tra dashboard hay chạy E2E trên điện thoại.
 - Mobile QR scanner tự yêu cầu camera sau chỉ sau khi API join thành công và WebSocket xác nhận `connected`; camera attempt được khóa để tránh nhiều stream, callback bị vô hiệu khi dừng/unmount và tracks được dừng rõ ràng. Có fallback quyền camera, retry kết nối và retry camera; nonce/thời hạn/payload/ACK giữ nguyên. Chưa kiểm thử quyền/camera hoặc pairing trên thiết bị thật.
 
@@ -29,13 +29,21 @@
 1. Camera thật và WebSocket hai thiết bị chưa kiểm thử; cần frontend/API HTTPS truy cập được trên điện thoại và PostgreSQL đang chạy.
 2. Kiểm tra `docs/integration-audit.md` và các tài liệu contract trước khi đổi API hoặc nghiệp vụ.
 3. Không suy diễn rằng kiểm thử audit trước đó vừa được chạy lại.
-4. Không công khai API đến khi có authentication/authorization.
+4. Không công khai API trước khi áp migration, tạo admin, đặt `AUTH_SECRET_KEY`, cấu hình HTTPS/CORS/custom domain và rate limiting đăng nhập.
 5. Các ưu tiên kỹ thuật được ghi trong audit: thống nhất server-side search/pagination, validation email và semantics giao dịch; xác minh camera/WebSocket trên thiết bị thật và browser E2E.
 6. Production yêu cầu TLS hợp lệ, API HTTPS/WSS và CORS allowlist đúng origin.
 7. Chưa test camera/WebSocket hai thiết bị thật. Mobile cần trusted HTTPS CA; chưa chạy Compose services do frontend image build vấp npm registry ECONNRESET.
 
 ## Quy tắc cập nhật
 Sau thay đổi kiến trúc/tính năng/sửa lỗi, cập nhật tệp này cùng `progress.md` và các trang Memory Bank/`docs/` có liên quan. Giữ rõ trạng thái đã triển khai, đã kiểm chứng và chưa xác minh.
+
+## Xác thực tài khoản và RBAC (2026-11-10)
+- API mode đã có login/logout/refresh/me, access token HMAC 15 phút gắn với session trong PostgreSQL; refresh cookie HttpOnly được xoay và có CSRF double-submit/origin validation. Token chỉ lưu trong memory frontend; refresh sau reload dùng cookie/API CSRF endpoint.
+- `X-User-Id` không còn là danh tính tin cậy; bootstrap và API nghiệp vụ yêu cầu bearer access token. Role được đọc từ DB trên request. Admin quản lý users/password; user/deactivation/reset thu hồi sessions; không thể gỡ admin cuối.
+- Migration `0007_user_auth_sessions` đã sinh SQL offline, nhưng chưa áp vào DB runtime. Tài khoản cũ/seed không có password hash; cần bootstrap admin qua `python -m app.create_admin` sau migration.
+- Frontend API mode chặn route bằng login, có refresh/ retry; `/users` chỉ dành admin. LocalStorage demo vẫn không có auth và được đánh dấu rõ.
+- Backend tests 40 passed/7 skipped; frontend build và routing 9/9 đạt, compileall/Compose config/offline migration đạt. Chưa kiểm tra UI thực tế, cookie third-party, browser hoặc production deployment.
+- Production cần `AUTH_SECRET_KEY` ≥32 byte, `APP_ENV=production`, HTTPS, CORS allowlist, ưu tiên custom frontend/API subdomains cùng site với cookie domain phù hợp; cấu hình rate limit login tại gateway.
 
 ## Nâng cấp giao diện FOUNDATION (2026-10-11)
 - Audit trước khi sửa: React 18/TypeScript/Vite, React Router 7, CSS thuần, Lucide, Recharts; các route nghiệp vụ hiện có cùng `/scanner/mobile` đã được xác nhận. Git diff ban đầu sạch.

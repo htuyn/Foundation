@@ -76,7 +76,7 @@ export interface UserRecord {
   id: string
   name: string
   email: string
-  role: 'Quản trị viên' | 'Quản lý kho' | 'Nhân viên kho'
+  role: 'Quản trị viên' | 'Quản lý kho' | 'Nhân viên kho' | 'Chỉ xem'
   active: boolean
   createdAt: string
 }

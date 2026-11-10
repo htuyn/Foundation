@@ -20,7 +20,7 @@ test('Vercel rewrites direct SPA requests to the Vite entry document', () => {
 
 test('React Router keeps the mobile scanner route registered', () => {
   assert.match(appSource, /<Route path="\/scanner\/mobile" element={<ScannerMobilePage\s*\/>} \/>/)
-  assert.ok(appSource.indexOf('<Route path="/scanner/mobile"') < appSource.indexOf('<Route element={<Layout />}>'))
+  assert.ok(appSource.indexOf('<Route path="/scanner/mobile"') < appSource.indexOf('<Route element={<AuthenticatedLayout />}>'))
 })
 
 test('production QR requires an explicit configured frontend origin', () => {

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { seedData } from './seed'
 import type { Product, Supplier, UserRecord, Warehouse, WarehouseDocument, WarehouseState } from '../types'
+import { authenticatedRequest } from '../features/auth/authClient'
 
 const STORAGE_KEY = 'smart-warehouse-data-v1'
 const id = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -23,7 +24,7 @@ interface WarehouseContextValue {
   deleteWarehouse: (warehouseId: string) => Promise<void>
   saveSupplier: (supplier: Omit<Supplier, 'id'>, supplierId?: string) => Promise<void>
   deleteSupplier: (supplierId: string) => Promise<void>
-  saveUser: (user: Omit<UserRecord, 'id' | 'createdAt'>, userId?: string) => Promise<void>
+  saveUser: (user: Omit<UserRecord, 'id' | 'createdAt'>, userId?: string, password?: string) => Promise<void>
   saveDocument: (document: Omit<WarehouseDocument, 'id' | 'code' | 'createdAt' | 'status'>) => Promise<string>
   confirmDocument: (documentId: string) => Promise<void>
   cancelDocument: (documentId: string) => Promise<void>
@@ -32,7 +33,6 @@ interface WarehouseContextValue {
 
 const WarehouseContext = createContext<WarehouseContextValue | null>(null)
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/$/, '') ?? ''
 const apiEnabled = warehouseApiEnabled
 const emptyState: WarehouseState = { products: [], warehouses: [], inventory: [], documents: [], transactions: [], suppliers: [], users: [], categories: [], auditLogs: [] }
 
@@ -44,18 +44,13 @@ export class WarehouseApiError extends Error {
 }
 
 async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  let response: Response
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...init,
-      headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
-    })
-  } catch {
-    throw new Error('Không thể kết nối backend. Hãy kiểm tra API server và cấu hình VITE_API_BASE_URL.')
+    return await authenticatedRequest<T>(path, init)
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error('Không thể kết nối backend. Hãy kiểm tra API server và cấu hình VITE_API_BASE_URL.')
+    if (error instanceof Error) throw new WarehouseApiError(error.message, (error as Error & { code?: string }).code)
+    throw error
   }
-  const payload = response.status === 204 ? undefined : await response.json().catch(() => undefined)
-  if (!response.ok) throw new WarehouseApiError(payload?.error?.message ?? `Backend trả về lỗi HTTP ${response.status}.`, payload?.error?.code)
-  return payload as T
 }
 
 function readInitialData(): WarehouseState {
@@ -261,9 +256,10 @@ export function WarehouseProvider({ children }: { children: ReactNode }) {
         if (supplier && data.documents.some((document) => document.partner === supplier.name)) throw new Error('Nhà cung cấp đã có phiếu nhập lịch sử, không thể xóa.')
         setData((current) => ({ ...current, suppliers: current.suppliers.filter((item) => item.id !== supplierId) }))
       },
-      saveUser: async (user, userId) => {
+      saveUser: async (user, userId, password) => {
         if (apiEnabled) {
-          await apiRequest(`/users${userId ? `/${userId}` : ''}`, { method: userId ? 'PUT' : 'POST', body: JSON.stringify(user) })
+          await apiRequest(`/users${userId ? `/${userId}` : ''}`, { method: userId ? 'PUT' : 'POST', body: JSON.stringify(userId ? user : { ...user, password }) })
+          if (userId && password) await apiRequest(`/auth/users/${userId}/password`, { method: 'PUT', body: JSON.stringify({ password }) })
           await reloadFromApi()
           return
         }

@@ -64,6 +64,20 @@ class UserInput(ApiSchema):
     role: Literal["Quản trị viên", "Quản lý kho", "Nhân viên kho", "Chỉ xem"] = "Nhân viên kho"
     active: bool = True
 
+    @field_validator("email")
+    @classmethod
+    def valid_user_email(cls, value: str) -> str:
+        import re
+
+        normalized = value.strip().lower()
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", normalized):
+            raise ValueError("Email không hợp lệ.")
+        return normalized
+
+
+class UserCreateInput(UserInput):
+    password: str = Field(min_length=12, max_length=128)
+
 
 class DocumentLineInput(ApiSchema):
     productId: UUID

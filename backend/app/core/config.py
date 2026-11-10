@@ -1,4 +1,5 @@
 from functools import lru_cache
+import secrets
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
@@ -17,6 +18,10 @@ class Settings(BaseSettings):
     cors_origin_regex: str | None = None
     scanner_session_ttl_seconds: int = 600
     scanner_qr_ttl_seconds: int = 60
+    auth_secret_key: str = ""
+    auth_access_ttl_seconds: int = 900
+    auth_refresh_ttl_seconds: int = 604800
+    auth_cookie_domain: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
@@ -36,6 +41,19 @@ class Settings(BaseSettings):
             port=self.postgres_port,
             database=self.postgres_db,
         ).render_as_string(hide_password=False)
+
+    @property
+    def signing_key(self) -> str:
+        if self.auth_secret_key:
+            if len(self.auth_secret_key.encode()) < 32:
+                raise ValueError("AUTH_SECRET_KEY phải có ít nhất 32 byte entropy.")
+            return self.auth_secret_key
+        if self.app_env.lower() in {"production", "prod"}:
+            raise ValueError("AUTH_SECRET_KEY bắt buộc phải được cấu hình trong production.")
+        return _development_signing_key
+
+
+_development_signing_key = secrets.token_urlsafe(48)
 
 
 @lru_cache

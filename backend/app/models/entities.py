@@ -91,6 +91,7 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     email: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(Text)
     role: Mapped[str] = mapped_column(Text, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -98,6 +99,19 @@ class User(Base):
         CheckConstraint("role IN ('Quản trị viên', 'Quản lý kho', 'Nhân viên kho', 'Chỉ xem')", name="ck_users_role"),
         Index("uq_users_email_lower", func.lower(email), unique=True),
     )
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    refresh_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    csrf_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (Index("ix_auth_sessions_user_id", "user_id"),)
 
 
 class Inventory(Base):

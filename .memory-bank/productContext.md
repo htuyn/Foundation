@@ -14,6 +14,7 @@
 - Có `VITE_API_BASE_URL` (ví dụ `http://localhost:8000/api/v1`): dữ liệu nghiệp vụ đọc/ghi qua API. Khi API lỗi, ứng dụng báo lỗi và không tự chuyển sang localStorage.
 - Không có biến trên: dùng dữ liệu seed và `localStorage` cho chế độ demo.
 - Scanner QR từ xa chỉ hoạt động qua backend; chế độ demo được nhận diện rõ, không giả lập đồng bộ giữa thiết bị.
+- API mode yêu cầu đăng nhập; user/role được kiểm tra phía backend. Refresh cookie được bảo vệ CSRF; localStorage mode vẫn chỉ là demo không xác thực.
 
 ## Trải nghiệm hiện có
 Giao diện responsive, có tìm kiếm/lọc/sắp xếp/phân trang phía client, xuất CSV, giao diện sáng/tối và camera ZXing. Một số giới hạn tích hợp và kiểm thử được liệt kê trong `docs/integration-audit.md`.

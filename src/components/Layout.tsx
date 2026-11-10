@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useWarehouse } from '../data/WarehouseContext'
+import { authApiEnabled, useAuth } from '../features/auth/AuthContext'
 import {
-  Activity, Bell, Boxes, ChartNoAxesCombined, ChevronLeft, ChevronRight,
+  Activity, Bell, Boxes, ChartNoAxesCombined, ChevronLeft, ChevronRight, LogOut,
   ClipboardList, FileBarChart, LayoutDashboard, Menu, Package, ScanLine, Search,
   Settings, ShieldCheck, Truck, Users, Warehouse, X,
 } from 'lucide-react'
@@ -40,6 +41,7 @@ export function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { data } = useWarehouse()
+  const { user, logout } = useAuth()
   const page = routeNames[location.pathname] ?? 'Dashboard'
   const lowStockCount = data.products.filter((product) => data.inventory.filter((item) => item.productId === product.id).reduce((sum, item) => sum + item.quantity, 0) <= product.minStock).length
   const draftCount = data.documents.filter((document) => document.status === 'Bản nháp').length
@@ -62,12 +64,12 @@ export function Layout() {
         <nav className="sidebar-nav" aria-label="Điều hướng chính">
           {groups.map((group) => <div className="nav-group" key={group.title}>
             {!collapsed && <div className="nav-heading">{group.title}</div>}
-            {group.links.map(({ label, path, icon: Icon }) => <NavLink key={path} to={path} title={collapsed ? label : undefined} onClick={() => setMobileOpen(false)} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            {group.links.filter(({ path }) => path !== '/users' || user?.role === 'Quản trị viên').map(({ label, path, icon: Icon }) => <NavLink key={path} to={path} title={collapsed ? label : undefined} onClick={() => setMobileOpen(false)} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <Icon size={18} strokeWidth={1.8} /><span>{label}</span>{label === 'Tồn kho' && !collapsed && lowStockCount > 0 && <span className="nav-count">{lowStockCount}</span>}
             </NavLink>)}
           </div>)}
         </nav>
-        {!collapsed && <div className="sidebar-bottom"><div className="sidebar-user"><div className="user-avatar">LN</div><div className="sidebar-user-copy"><strong>Lê Hoàng Nam</strong><small>Quản trị viên · mô phỏng</small></div></div></div>}
+        {!collapsed && <div className="sidebar-bottom"><div className="sidebar-user"><div className="user-avatar">{user?.name.split(' ').slice(-1)[0]?.slice(0, 1) ?? '?'}</div><div className="sidebar-user-copy"><strong>{user?.name}</strong><small>{authApiEnabled ? user?.role : 'DEMO · chưa xác thực'}</small></div>{authApiEnabled && <button className="icon-button" type="button" aria-label="Đăng xuất" title="Đăng xuất" onClick={() => { void logout() }}><LogOut size={17} /></button>}</div></div>}
       </aside>
       <main className="main-area">
         <header className="topbar">
@@ -75,7 +77,7 @@ export function Layout() {
           <div className="topbar-actions">
             <form className="global-search" onSubmit={submitSearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm sản phẩm, mã SKU..." aria-label="Tìm kiếm toàn cục" /><kbd>⌘ K</kbd></form>
             <div className="notification-wrap"><button className="icon-button notification-button" aria-label="Thông báo" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen(!notificationsOpen)}><Bell size={18} />{lowStockCount + draftCount > 0 && <i />}</button>{notificationsOpen && <div className="notification-popover"><strong>Thông báo kho</strong>{lowStockCount > 0 && <Link to="/inventory" onClick={() => setNotificationsOpen(false)}><span className="notification-alert amber-alert" /><span><b>{lowStockCount} sản phẩm</b><small>đang ở dưới mức tồn tối thiểu</small></span></Link>}{draftCount > 0 && <Link to="/inbound" onClick={() => setNotificationsOpen(false)}><span className="notification-alert blue-alert" /><span><b>{draftCount} phiếu nháp</b><small>đang chờ xác nhận</small></span></Link>}{lowStockCount + draftCount === 0 && <p>Không có thông báo mới.</p>}</div>}</div>
-            <div className="topbar-divider" /><div className="topbar-profile"><div className="user-avatar small">LN</div></div>
+            <div className="topbar-divider" /><div className="topbar-profile" title={`${user?.name ?? ''} · ${user?.role ?? ''}`}><div className="user-avatar small">{user?.name.split(' ').slice(-1)[0]?.slice(0, 1) ?? '?'}</div></div>
           </div>
         </header>
         <div className="page-scroll"><Outlet /></div>

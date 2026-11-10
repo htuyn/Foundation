@@ -4,6 +4,7 @@
 - Frontend: React 18, TypeScript 5.6, Vite, React Router 7, Recharts, Lucide, ZXing.
 - Backend: Python 3.12+, FastAPI, Pydantic Settings, SQLAlchemy 2.x, Alembic, psycopg 3.
 - Database: PostgreSQL 16 (Docker Compose).
+- Authentication: access token HMAC ngắn hạn, refresh session opaque trong cookie HttpOnly, CSRF double-submit, mật khẩu scrypt (stdlib); migration `0007_user_auth_sessions`.
 - Kiểm thử backend: pytest và httpx; có contract/validation tests cùng PostgreSQL integration tests.
 
 ## Lệnh phát triển
@@ -13,7 +14,7 @@ npm run dev
 npm run build
 ```
 
-Backend trực tiếp (xem `README.md` để biết cấu hình môi trường):
+Backend trực tiếp (xem `README.md` và `docs/authentication.md` để biết cấu hình môi trường/tạo admin):
 ```bash
 cd backend
 python -m pip install -r requirements.txt

@@ -1,7 +1,10 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ToastHost } from './components/common'
+import { useAuth } from './features/auth/AuthContext'
+import { LoginPage } from './features/auth/LoginPage'
+import { WarehouseProvider } from './data/WarehouseContext'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
 const ProductsPage = lazy(() => import('./pages/ProductsPage').then((module) => ({ default: module.ProductsPage })))
@@ -22,6 +25,21 @@ function NotFound() {
   return <div className="not-found"><div>404</div><h1>Không tìm thấy trang</h1><p>Đường dẫn này không tồn tại trong hệ thống.</p><a href="/dashboard" className="button button-primary">Về tổng quan</a></div>
 }
 
+function AuthenticatedLayout() {
+  const { user, loading } = useAuth()
+  const location = useLocation()
+  if (loading) return <div className="route-loading"><span />Đang kiểm tra phiên đăng nhập…</div>
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />
+  if (location.pathname === '/users' && user.role !== 'Quản trị viên') return <Navigate to="/dashboard" replace />
+  return <WarehouseProvider><Layout /></WarehouseProvider>
+}
+
+function LoginRoute() {
+  const { user, loading } = useAuth()
+  if (loading) return <div className="route-loading"><span />Đang kiểm tra phiên đăng nhập…</div>
+  return user ? <Navigate to="/dashboard" replace /> : <LoginPage />
+}
+
 export function App() {
-  return <><Suspense fallback={<div className="route-loading"><span />Đang tải trang...</div>}><Routes><Route path="/scanner/mobile" element={<ScannerMobilePage />} /><Route element={<Layout />}><Route index element={<Navigate to="/dashboard" replace />} /><Route path="dashboard" element={<DashboardPage />} /><Route path="products" element={<ProductsPage />} /><Route path="categories" element={<CategoriesPage />} /><Route path="warehouses" element={<WarehousesPage />} /><Route path="inbound" element={<DocumentsPage type="Nhập kho" />} /><Route path="outbound" element={<DocumentsPage type="Xuất kho" />} /><Route path="inventory" element={<InventoryPage />} /><Route path="suppliers" element={<SuppliersPage />} /><Route path="transactions" element={<TransactionsPage />} /><Route path="users" element={<UsersPage />} /><Route path="reports" element={<ReportsPage />} /><Route path="barcode" element={<BarcodePage />} /><Route path="settings" element={<SettingsPage />} /><Route path="audit-logs" element={<AuditLogsPage />} /><Route path="*" element={<NotFound />} /></Route></Routes></Suspense><ToastHost /></>
+  return <><Suspense fallback={<div className="route-loading"><span />Đang tải trang...</div>}><Routes><Route path="/scanner/mobile" element={<ScannerMobilePage />} /><Route path="/login" element={<LoginRoute />} /><Route element={<AuthenticatedLayout />}><Route index element={<Navigate to="/dashboard" replace />} /><Route path="dashboard" element={<DashboardPage />} /><Route path="products" element={<ProductsPage />} /><Route path="categories" element={<CategoriesPage />} /><Route path="warehouses" element={<WarehousesPage />} /><Route path="inbound" element={<DocumentsPage type="Nhập kho" />} /><Route path="outbound" element={<DocumentsPage type="Xuất kho" />} /><Route path="inventory" element={<InventoryPage />} /><Route path="suppliers" element={<SuppliersPage />} /><Route path="transactions" element={<TransactionsPage />} /><Route path="users" element={<UsersPage />} /><Route path="reports" element={<ReportsPage />} /><Route path="barcode" element={<BarcodePage />} /><Route path="settings" element={<SettingsPage />} /><Route path="audit-logs" element={<AuditLogsPage />} /><Route path="*" element={<NotFound />} /></Route></Routes></Suspense><ToastHost /></>
 }

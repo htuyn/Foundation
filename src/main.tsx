@@ -2,8 +2,8 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { App } from './App'
-import { WarehouseProvider } from './data/WarehouseContext'
 import { ScannerBasketProvider } from './features/scanner/ScannerBasketContext'
+import { AuthProvider } from './features/auth/AuthContext'
 import './styles.css'
 
 document.documentElement.dataset.theme = 'light'
@@ -11,11 +11,11 @@ document.documentElement.dataset.theme = 'light'
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <WarehouseProvider>
+      <AuthProvider>
         <ScannerBasketProvider>
           <App />
         </ScannerBasketProvider>
-      </WarehouseProvider>
+      </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>,
 )

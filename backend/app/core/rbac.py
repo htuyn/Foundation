@@ -1,9 +1,9 @@
 """RBAC middleware dependency cho FastAPI.
 
 Cơ chế:
-  - Client gửi header  X-User-Id: <uuid>  mỗi request
-  - Middleware tra DB lấy User, kiểm tra active và role
-  - Nếu thiếu header hoặc user không tồn tại → 401
+  - Client gửi access token ký số trong Authorization: Bearer mỗi request
+  - Backend xác minh chữ ký, tra DB và kiểm tra tài khoản active/role
+  - Token sai/hết hạn hoặc user không tồn tại → 401
   - Nếu role không đủ quyền → 403 + ghi Audit Log
 
 Ma trận phân quyền (roadmap SV4 – CV02):
@@ -15,13 +15,14 @@ Ma trận phân quyền (roadmap SV4 – CV02):
   Chỉ xem           |  ✓  |  ✗   |     ✗     |   ✗    |        ✗         |        ✗
 
 Quy tắc:
-  - GET /health*, GET /api/v1/bootstrap → public (không cần header)
+  - GET /health* → public
   - Scanner endpoints (/scanner/*) → public (xác thực qua QR token riêng)
-  - Tất cả endpoint còn lại → bắt buộc X-User-Id
+  - Tất cả endpoint nghiệp vụ → bắt buộc access token
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -30,17 +31,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
+from app.core.auth import decode_access_token
 from app.db.session import get_db
-from app.models import AuditLog, User
+from app.models import AuditLog, AuthSession, User
 
 # ---------------------------------------------------------------------------
 # Các endpoint được miễn xác thực (prefix match)
 # ---------------------------------------------------------------------------
-_PUBLIC_PREFIXES = (
-    "/health",
-    "/api/v1/scanner",   # scanner dùng QR token riêng
-    "/api/v1/bootstrap", # tải dữ liệu khởi động
-)
+_PUBLIC_PREFIXES = ("/health", "/api/v1/scanner")
 
 # ---------------------------------------------------------------------------
 # Danh sách role được phép thực hiện từng method
@@ -78,11 +76,11 @@ def _write_deny_log(db: Session, user: User, method: str, path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Dependency: resolve user từ X-User-Id header
+# Dependency: resolve user từ bearer access token
 # ---------------------------------------------------------------------------
 def get_current_user(
     request: Request,
-    x_user_id: Annotated[str | None, Header(alias="X-User-Id")] = None,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
     db: Session = Depends(get_db),
 ) -> User:
     """FastAPI dependency – trả về User đang thực hiện request.
@@ -99,20 +97,24 @@ def get_current_user(
         # vẫn có thể ghi audit log với actor_name = "Hệ thống"
         return _SYSTEM_USER
 
-    if not x_user_id:
-        raise ApiError(401, "MISSING_USER_HEADER", "Yêu cầu header X-User-Id.")
-
-    try:
-        uid = UUID(x_user_id)
-    except ValueError:
-        raise ApiError(401, "INVALID_USER_ID", "X-User-Id không phải UUID hợp lệ.")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise ApiError(401, "MISSING_ACCESS_TOKEN", "Yêu cầu access token hợp lệ.")
+    token_claims = decode_access_token(authorization.removeprefix("Bearer ").strip())
+    if token_claims is None:
+        raise ApiError(401, "INVALID_ACCESS_TOKEN", "Access token không hợp lệ hoặc đã hết hạn.")
+    uid, session_id = token_claims
+    auth_session = db.scalar(select(AuthSession).where(AuthSession.id == session_id, AuthSession.user_id == uid))
+    now = datetime.now(timezone.utc)
+    session_expiry = auth_session.expires_at if auth_session and auth_session.expires_at.tzinfo else auth_session.expires_at.replace(tzinfo=timezone.utc) if auth_session else now
+    if not auth_session or auth_session.revoked_at or session_expiry <= now:
+        raise ApiError(401, "SESSION_EXPIRED", "Phiên đăng nhập đã hết hạn hoặc bị thu hồi.")
 
     user = db.scalar(select(User).where(User.id == uid))
     if not user:
         raise ApiError(401, "USER_NOT_FOUND", "Không tìm thấy tài khoản.")
     if not user.active:
         raise ApiError(403, "USER_INACTIVE", "Tài khoản đã bị vô hiệu hoá.")
-
+    request.state.actor_name = user.name
     return user
 
 
@@ -165,3 +167,12 @@ def require_permission(
 # Type alias tiện dụng để dùng trong endpoint signature
 # ---------------------------------------------------------------------------
 CurrentUser = Annotated[User, Depends(require_permission)]
+
+
+def require_admin(user: CurrentUser) -> User:
+    if user.role != "Quản trị viên":
+        raise ApiError(403, "ADMIN_REQUIRED", "Chỉ quản trị viên được quản lý tài khoản và vai trò.")
+    return user
+
+
+CurrentAdmin = Annotated[User, Depends(require_admin)]

@@ -586,10 +586,7 @@ def _seed_rbac_users(session: Session) -> None:
             )
         )
         session.execute(stmt)
-    print("RBAC demo users đã seed xong. UUID:")
-    for u in _RBAC_USERS:
-        uid = uuid5(NAMESPACE_URL, f"rbac-user-{u['email']}")
-        print(f"  [{u['role']}] {u['name']} → X-User-Id: {uid}")
+    print("Đã seed tài khoản RBAC demo; các tài khoản này chưa có mật khẩu và không thể đăng nhập.")
 
 def main() -> None:
     now = datetime.now(timezone.utc)

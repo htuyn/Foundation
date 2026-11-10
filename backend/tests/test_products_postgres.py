@@ -8,8 +8,24 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
 from app.api.deps import get_db
+from app.core.rbac import get_current_user
 from app.db.session import engine
 from app.main import app
+from app.models import User
+
+
+@pytest.fixture(autouse=True)
+def authenticated_business_api_requests():
+    previous = app.dependency_overrides.get(get_current_user)
+    test_user = User(id=uuid4(), name="Integration admin", email="integration@example.test", role="Quản trị viên", active=True)
+    app.dependency_overrides[get_current_user] = lambda: test_user
+    try:
+        yield
+    finally:
+        if previous is None:
+            app.dependency_overrides.pop(get_current_user, None)
+        else:
+            app.dependency_overrides[get_current_user] = previous
 
 
 @pytest.mark.skipif(

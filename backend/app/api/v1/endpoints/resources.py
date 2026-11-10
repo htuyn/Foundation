@@ -2,15 +2,16 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ApiError
-from app.core.rbac import CurrentUser, require_permission
+from app.core.rbac import CurrentAdmin, CurrentUser, require_permission
 from app.db.session import get_db
-from app.models import AuditLog, Category, Inventory, Product, StockDocument, StockDocumentItem, StockMovement, Supplier, User, Warehouse
-from app.schemas import CategoryCreate, InventoryAdjustmentInput, ProductInput, SupplierInput, UserInput, WarehouseInput
+from app.models import AuditLog, AuthSession, Category, Inventory, Product, StockDocument, StockDocumentItem, StockMovement, Supplier, User, Warehouse
+from app.schemas import CategoryCreate, InventoryAdjustmentInput, ProductInput, SupplierInput, UserCreateInput, UserInput, WarehouseInput
+from app.core.auth import hash_password
 from app.services.audit_context import current_actor_name
 from app.services.serialization import audit_dict, product_dict, supplier_dict, user_dict, warehouse_dict
 
@@ -42,10 +43,13 @@ def get_category(db: Session, name: str) -> Category:
 
 
 @router.get("/bootstrap")
-def get_bootstrap(db: Session = Depends(get_db)):
+def get_bootstrap(user: CurrentUser, db: Session = Depends(get_db)):
     from app.services.serialization import bootstrap_state
 
-    return bootstrap_state(db)
+    snapshot = bootstrap_state(db)
+    if user.role != "Quản trị viên":
+        snapshot["users"] = []
+    return snapshot
 
 
 
@@ -322,14 +326,15 @@ def delete_supplier(supplier_id: UUID, user: CurrentUser, db: Session = Depends(
 
 
 @router.get("/users")
-def list_users(user: CurrentUser, db: Session = Depends(get_db)):
+def list_users(user: CurrentAdmin, db: Session = Depends(get_db)):
     return [user_dict(item) for item in db.scalars(select(User).order_by(User.name)).all()]
 
 
 @router.post("/users", status_code=201)
-def create_user(payload: UserInput, current_user: CurrentUser, db: Session = Depends(get_db)):
+def create_user(payload: UserCreateInput, current_user: CurrentAdmin, db: Session = Depends(get_db)):
     try:
-        new_user = User(**payload.model_dump())
+        values = payload.model_dump(exclude={"password"})
+        new_user = User(**values, password_hash=hash_password(payload.password))
         db.add(new_user)
         db.flush()
         add_audit(db, f"Tạo tài khoản {new_user.name}", current_user.name)
@@ -339,11 +344,17 @@ def create_user(payload: UserInput, current_user: CurrentUser, db: Session = Dep
 
 
 @router.put("/users/{user_id}")
-def update_user(user_id: UUID, payload: UserInput, current_user: CurrentUser, db: Session = Depends(get_db)):
+def update_user(user_id: UUID, payload: UserInput, current_user: CurrentAdmin, db: Session = Depends(get_db)):
     try:
         target_user = db.scalar(select(User).where(User.id == user_id).with_for_update())
         if not target_user:
             raise ApiError(404, "USER_NOT_FOUND", "Không tìm thấy người dùng.")
+        if target_user.id == current_user.id and (not payload.active or payload.role != "Quản trị viên"):
+            raise ApiError(409, "CANNOT_REMOVE_OWN_ADMIN", "Không thể tự vô hiệu hóa hoặc hạ quyền quản trị của chính mình.")
+        if target_user.active and target_user.role == "Quản trị viên" and (not payload.active or payload.role != "Quản trị viên"):
+            active_admin_count = db.scalar(select(func.count()).select_from(User).where(User.active.is_(True), User.role == "Quản trị viên")) or 0
+            if active_admin_count <= 1:
+                raise ApiError(409, "LAST_ADMIN_REQUIRED", "Hệ thống phải luôn có ít nhất một quản trị viên đang hoạt động.")
         for field, value in payload.model_dump().items():
             setattr(target_user, field, value)
         add_audit(db, f"Cập nhật tài khoản {target_user.name}", current_user.name)
@@ -354,7 +365,7 @@ def update_user(user_id: UUID, payload: UserInput, current_user: CurrentUser, db
 
 
 @router.delete("/users/{user_id}", status_code=204)
-def deactivate_user(user_id: UUID, current_user: CurrentUser, db: Session = Depends(get_db)):
+def deactivate_user(user_id: UUID, current_user: CurrentAdmin, db: Session = Depends(get_db)):
     """Vô hiệu hoá tài khoản (soft-delete). Không xoá hẳn để bảo toàn Audit Log.
 
     Chỉ Quản trị viên / Quản lý kho mới được thực hiện (RBAC DELETE).
@@ -365,7 +376,16 @@ def deactivate_user(user_id: UUID, current_user: CurrentUser, db: Session = Depe
         raise ApiError(404, "USER_NOT_FOUND", "Không tìm thấy người dùng.")
     if current_user.id is not None and target_user.id == current_user.id:
         raise ApiError(409, "CANNOT_DEACTIVATE_SELF", "Không thể tự vô hiệu hoá tài khoản của chính mình.")
+    if target_user.active and target_user.role == "Quản trị viên":
+        active_admin_count = db.scalar(select(func.count()).select_from(User).where(User.active.is_(True), User.role == "Quản trị viên")) or 0
+        if active_admin_count <= 1:
+            raise ApiError(409, "LAST_ADMIN_REQUIRED", "Hệ thống phải luôn có ít nhất một quản trị viên đang hoạt động.")
     target_user.active = False
+    db.execute(
+        update(AuthSession)
+        .where(AuthSession.user_id == target_user.id, AuthSession.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
     add_audit(db, f"Vô hiệu hoá tài khoản {target_user.name} (role: {target_user.role})", current_user.name)
 
 
