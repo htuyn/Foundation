@@ -17,13 +17,17 @@ def main() -> None:
     name = args.name.strip()
     if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email) or not name:
         parser.error("Cần email hợp lệ và tên không được để trống.")
-    password = getpass("Mật khẩu mới (tối thiểu 12 ký tự): ")
+    password = getpass("Mật khẩu mới (tối thiểu 6 ký tự): ")
     confirmation = getpass("Nhập lại mật khẩu: ")
     if password != confirmation:
         parser.error("Hai mật khẩu không khớp.")
     password_hash = hash_password(password)
     with SessionLocal.begin() as db:
-        active_admin_id = db.scalar(select(User.id).where(User.role == "Quản trị viên", User.active.is_(True)).limit(1))
+        active_admin_id = db.scalar(
+            select(User.id)
+            .where(User.role == "Quản trị viên", User.active.is_(True), User.password_hash.is_not(None))
+            .limit(1)
+        )
         user = db.scalar(select(User).where(func.lower(User.email) == email).with_for_update())
         if active_admin_id and (not user or active_admin_id != user.id):
             parser.error("Đã có quản trị viên hoạt động; không thể tạo/nâng quyền quản trị viên khác bằng lệnh bootstrap.")

@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -10,6 +11,12 @@ from app.core.auth import hash_password
 from app.core.config import settings
 from app.main import app
 from app.models import AuditLog, AuthSession, Category, User
+
+
+def test_password_length_allows_six_characters_and_rejects_fewer():
+    assert hash_password("admin123")
+    with pytest.raises(ValueError):
+        hash_password("12345")
 
 
 def make_client(monkeypatch, role="Quản trị viên", active=True):

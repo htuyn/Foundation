@@ -42,8 +42,9 @@ Sau thay đổi kiến trúc/tính năng/sửa lỗi, cập nhật tệp này c�
 - `X-User-Id` không còn là danh tính tin cậy; bootstrap và API nghiệp vụ yêu cầu bearer access token. Role được đọc từ DB trên request. Admin quản lý users/password; user/deactivation/reset thu hồi sessions; không thể gỡ admin cuối.
 - Migration `0007_user_auth_sessions` đã sinh SQL offline, nhưng chưa áp vào DB runtime. Tài khoản cũ/seed không có password hash; cần bootstrap admin qua `python -m app.create_admin` sau migration.
 - Frontend API mode chặn route bằng login, có refresh/ retry; `/users` chỉ dành admin. LocalStorage demo vẫn không có auth và được đánh dấu rõ.
-- Backend tests 40 passed/7 skipped; frontend build và routing 9/9 đạt, compileall/Compose config/offline migration đạt. Chưa kiểm tra UI thực tế, cookie third-party, browser hoặc production deployment.
+- Backend tests 41 passed/7 skipped; frontend build và routing 9/9 đạt, compileall/Compose config/offline migration đạt. Chưa kiểm tra UI thực tế, cookie third-party, browser hoặc production deployment.
 - Production cần `AUTH_SECRET_KEY` ≥32 byte, `APP_ENV=production`, HTTPS, CORS allowlist, ưu tiên custom frontend/API subdomains cùng site với cookie domain phù hợp; cấu hình rate limit login tại gateway.
+- 2026-11-10: minimum password theo yêu cầu hạ xuống 6 ký tự (tối đa 128), độ an toàn giảm. Chưa tạo `admin@gmai.com`: Docker/backend chưa chạy; cổng 5432 chưa xác nhận là DB dự án.
 
 ## Nâng cấp giao diện FOUNDATION (2026-10-11)
 - Audit trước khi sửa: React 18/TypeScript/Vite, React Router 7, CSS thuần, Lucide, Recharts; các route nghiệp vụ hiện có cùng `/scanner/mobile` đã được xác nhận. Git diff ban đầu sạch.

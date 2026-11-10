@@ -45,7 +45,7 @@ Yêu cầu Docker Desktop đang chạy và Python 3.12+.
     docker compose exec backend python -m app.create_admin --email admin@example.com --name "Quản trị viên"
     ```
 
-    Lệnh chỉ bootstrap quản trị viên đầu tiên; mật khẩu phải dài ít nhất 12 ký tự. Tài khoản demo seed không có mật khẩu đăng nhập.
+    Lệnh chỉ bootstrap quản trị viên đầu tiên; mật khẩu phải dài ít nhất 6 ký tự (khuyến nghị dài và khó đoán hơn). Tài khoản demo seed không có mật khẩu đăng nhập.
 5. Mở `http://localhost:5173`; frontend proxy `/api/v1` và WebSocket tới backend Compose. API docs ở `http://localhost:8000/docs`, API chỉ bind loopback host; PostgreSQL bind `127.0.0.1:5433`.
 6. Để quét bằng điện thoại trên LAN, cần secure context HTTPS và chứng chỉ CA mà thiết bị tin cậy. Cài `mkcert` bằng `winget install --id FiloSottile.mkcert --exact --source winget`. Với Compose, chạy `./scripts/start-lan-scanner.ps1`. Để giữ backend trên `127.0.0.1:8000` và chạy Vite trực tiếp trên máy, chạy `./scripts/start-lan-vite.ps1` (mặc định cổng `5174`, có thể chỉ định `-Port`). Script chọn IPv4 private, tạo HTTPS cert và cấu hình API/QR URL cho phiên Vite đó; nó in đường dẫn `rootCA.pem`, cần import và tin cậy trên Windows lẫn điện thoại trước khi truy cập HTTPS. Không bỏ qua cảnh báo TLS. Chi tiết ở [`docs/scanner-mobile.md`](docs/scanner-mobile.md).
 

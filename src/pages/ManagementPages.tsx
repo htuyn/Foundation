@@ -9,7 +9,7 @@ function EditModal({ title, fields, initial, onClose, onSave }: { title: string;
   const [values, setValues] = useState(initial)
   const [saving, setSaving] = useState(false)
   const visibleFields = fields.some((field) => field.key === 'role')
-    ? [...fields, { key: 'password', label: initial.name ? 'Mật khẩu mới (để trống nếu không đổi)' : 'Mật khẩu ban đầu (tối thiểu 12 ký tự)', type: 'password', required: !initial.name }]
+    ? [...fields, { key: 'password', label: initial.name ? 'Mật khẩu mới (để trống nếu không đổi)' : 'Mật khẩu ban đầu (tối thiểu 6 ký tự)', type: 'password', required: !initial.name }]
     : fields
   const close = () => { if (!saving) onClose() }
   const submit = async (event: FormEvent) => { event.preventDefault(); setSaving(true); try { await onSave(values) } finally { setSaving(false) } }

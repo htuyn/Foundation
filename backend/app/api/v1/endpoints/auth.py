@@ -35,7 +35,7 @@ class LoginInput(BaseModel):
 
 
 class PasswordInput(BaseModel):
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=6, max_length=128)
 
 
 def _set_session_cookies(response: Response, refresh_token: str, csrf_token: str) -> None:

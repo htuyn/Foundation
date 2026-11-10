@@ -18,8 +18,8 @@ def _b64decode(value: str) -> bytes:
 
 
 def hash_password(password: str) -> str:
-    if len(password) < 12 or len(password) > 128:
-        raise ValueError("Mật khẩu phải có từ 12 đến 128 ký tự.")
+    if len(password) < 6 or len(password) > 128:
+        raise ValueError("Mật khẩu phải có từ 6 đến 128 ký tự.")
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=32768, r=8, p=1, dklen=32, maxmem=128 * 1024 * 1024)
     return f"scrypt$32768$8$1${_b64encode(salt)}${_b64encode(digest)}"

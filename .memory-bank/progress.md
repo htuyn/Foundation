@@ -171,9 +171,13 @@
 ## Đăng nhập và RBAC phía backend (2026-11-10)
 - Thay cơ chế header giả mạo `X-User-Id` bằng access token HMAC-SHA-256 15 phút, ràng buộc session ID và kiểm tra session/user đang hoạt động trên mỗi request.
 - Thêm refresh token ngẫu nhiên, chỉ lưu hash trong DB, xoay vòng khi refresh; logout, đổi/reset mật khẩu và vô hiệu hóa user thu hồi phiên. Cookie refresh HttpOnly; CSRF cookie/header và origin allowlist được xác minh. Login thành công/đăng xuất và API rejection hiện có audit.
-- Mật khẩu hash bằng scrypt (N=32768, r=8, p=1), tối thiểu 12 ký tự. Migration `0007_user_auth_sessions` thêm nullable `users.password_hash` để user cũ không có mật khẩu đăng nhập, cùng `auth_sessions`.
+- Mật khẩu hash bằng scrypt (N=32768, r=8, p=1), tối thiểu 6 ký tự. Migration `0007_user_auth_sessions` thêm nullable `users.password_hash` để user cũ không có mật khẩu đăng nhập, cùng `auth_sessions`.
 - Bảo vệ `/api/v1/bootstrap` và các API kho bằng bearer access token; health/scanner QR giữ public có chủ đích. Quản trị user/password chỉ dành cho admin; không thể tự hạ/vô hiệu hóa admin hoặc xóa admin hoạt động cuối. Bootstrap snapshot không phát user list cho role khác admin.
 - Frontend có trang đăng nhập/đăng xuất, khôi phục phiên, tự refresh và retry đồng thời an toàn; route quản trị user chỉ hiển thị admin. Admin tạo user kèm mật khẩu ban đầu/đặt lại password. Demo localStorage được ghi rõ là không có bảo mật auth.
 - Thêm CLI prompt ẩn `python -m app.create_admin`, tài liệu `docs/authentication.md`, cấu hình secret/cookie/CORS và hướng dẫn deploy. Tài khoản seed demo không có mật khẩu.
 - Xác minh: backend `python -m pytest -q -p no:asyncio`: 40 passed, 7 PostgreSQL tests skipped; frontend build đạt; routing tests 9/9; `compileall`, `docker compose config --quiet`, Alembic offline SQL đến `0007_user_auth_sessions`, `git diff --check` đạt. Fixture PostgreSQL integration đã override current-user bằng admin test để giữ nguyên các test nghiệp vụ sau khi bootstrap yêu cầu auth.
 - Chưa áp migration lên DB thật, chưa tạo admin runtime, chưa kiểm tra browser/deployment production. Cần đặt `AUTH_SECRET_KEY` mạnh, chạy migration rồi bootstrap admin; Vercel/Render nên dùng custom domain cùng site do third-party cookie restrictions. Đặt rate limiting login ở gateway trước khi public.
+
+## Hạ ngưỡng độ dài mật khẩu và yêu cầu tạo admin (2026-11-10)
+- Theo yêu cầu, password bootstrap/login/tạo user/reset chấp nhận 6–128 ký tự; hash scrypt và token/session không thay đổi. Cảnh báo mật khẩu ngắn dễ đoán, nên dùng passphrase mạnh hơn. Backend suite hiện 41 passed/7 skipped; build và routing tests 9/9 đạt.
+- Chưa tạo `admin@gmai.com`: Docker daemon không chạy, backend `127.0.0.1:8000` không phản hồi. Cổng `5432` có listener nhưng chưa xác minh DB thuộc ứng dụng; không chạy migration/ghi vào DB không rõ nguồn. Cần bật đúng Compose database, áp migration rồi chạy CLI admin.

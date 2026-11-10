@@ -6,7 +6,7 @@
 - Access token HMAC-SHA-256 sống mặc định 15 phút, chỉ giữ trong bộ nhớ frontend; mỗi request nghiệp vụ gửi `Authorization: Bearer`.
 - Refresh token ngẫu nhiên nằm trong cookie `HttpOnly`, chỉ lưu SHA-256 hash trong `auth_sessions`, xoay token mỗi lần refresh và thu hồi khi logout, vô hiệu hóa tài khoản hoặc đặt lại mật khẩu.
 - Cookie CSRF riêng được kiểm tra cả header `X-CSRF-Token` lẫn origin cấu hình. Cookie production bật `Secure` và `SameSite=None`; local dùng `SameSite=Lax`.
-- Mật khẩu được băm bằng scrypt (N=32768, r=8, p=1, salt ngẫu nhiên); API không trả hash/mật khẩu. Mật khẩu tối thiểu 12 ký tự, tối đa 128 ký tự.
+- Mật khẩu được băm bằng scrypt (N=32768, r=8, p=1, salt ngẫu nhiên); API không trả hash/mật khẩu. Mật khẩu tối thiểu 6 ký tự, tối đa 128 ký tự. Mật khẩu ngắn dễ đoán kém an toàn; production nên dùng passphrase dài và riêng biệt.
 - Role được lấy lại từ DB trên request, không tin role trong token. Quản lý tài khoản và đặt lại mật khẩu chỉ dành cho Quản trị viên; ít nhất một admin hoạt động phải được giữ lại.
 
 ## Khởi tạo và vận hành
@@ -17,7 +17,7 @@ Sau khi chạy `alembic upgrade head`, tạo admin đầu tiên từ thư mục 
 python -m app.create_admin --email admin@example.com --name "Quản trị viên"
 ```
 
-Lệnh yêu cầu mật khẩu qua prompt ẩn. Tài khoản demo được tạo bởi `seed_demo` không có password hash và không thể đăng nhập. Admin có thể tạo user, gán một trong các vai trò `Quản trị viên`, `Quản lý kho`, `Nhân viên kho`, `Chỉ xem`, vô hiệu hóa tài khoản và đặt lại mật khẩu.
+Lệnh yêu cầu mật khẩu qua prompt ẩn (tối thiểu 6 ký tự). Tài khoản demo được tạo bởi `seed_demo` không có password hash và không thể đăng nhập. Admin có thể tạo user, gán một trong các vai trò `Quản trị viên`, `Quản lý kho`, `Nhân viên kho`, `Chỉ xem`, vô hiệu hóa tài khoản và đặt lại mật khẩu.
 
 API auth:
 
@@ -41,5 +41,7 @@ API auth:
 ## Migration và kiểm thử
 
 Migration `0007_user_auth_sessions` thêm `users.password_hash` nullable để giữ các user cũ ở trạng thái không thể đăng nhập cho tới khi admin bootstrap/đặt mật khẩu, đồng thời tạo bảng `auth_sessions`. Migration additive; chạy `alembic upgrade head` trước khi deploy backend/frontend.
+
+Minimum hiện tại là 6 ký tự theo yêu cầu; mật khẩu ngắn dễ đoán, nên dùng passphrase dài và duy nhất trong môi trường thực tế.
 
 Demo localStorage không có backend auth/RBAC và chỉ dành cho demo desktop. Chế độ đó được đánh dấu rõ trong UI; không dùng để bảo vệ production data.
