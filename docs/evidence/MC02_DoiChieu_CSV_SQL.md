@@ -146,25 +146,66 @@ print(f"Kết quả tổng: {'✅ TẤT CẢ KHỚP' if all_match else '❌ CÓ 
 ## 5. Kết quả chạy script
 
 > [!NOTE]
-> Kết quả từ lần chạy `python scripts/check_inventory.py` ngày 11/11/2026:
+> Kết quả thực tế từ lần chạy `python scripts/check_inventory.py` ngày 11/11/2026 ~22:28
 
 ```
-=== Phân tích ===
-Tổng số dòng      : 3000   (1000 sản phẩm × 3 kho/sản phẩm)
-Dòng khớp ✅      : 150    (sản phẩm index 951–1000: quantity seed = 0 → Ledger=0=DB)
-Dòng "lệch" ❌    : 2850   (do API /transactions abs() quantity, mất dấu Điều chỉnh)
+============================================================
+SV4 – Đối chiếu tồn kho vs Ledger StockMovement
+============================================================
 
-⚠️ NGUYÊN NHÂN "SAI LỆCH" – KHÔNG PHẢI LỖI HỆ THỐNG:
-  API /transactions trả quantity = abs(quantity_delta)
-  → Script tính ledger bị sai dấu khi type = "Điều chỉnh" âm
+[1/3] Lấy Inventory (tồn kho DB)...
+   [inventory] Đang lấy ...
+   [inventory] ✔ 3000 dòng
 
-✅ THỰC TẾ: seed_demo.py verify_seed() PASS hoàn toàn:
-  Σ StockMovement.quantity_delta == Inventory.quantity cho mọi (product, warehouse)
-  → TỒN KHO NHẤT QUÁN
+[2/3] Lấy StockMovements (ledger)...
+   [transactions] Trang 1  →  500 dòng
+   [transactions] Trang 2  → 1000 dòng
+   [transactions] Trang 3  → 1500 dòng
+   [transactions] Trang 4  → 2000 dòng
+   [transactions] Trang 5  → 2500 dòng
+   [transactions] Trang 6  → 3000 dòng
+   [transactions] Trang 7  → 3500 dòng
+   [transactions] Trang 8  → 4000 dòng
+   [transactions] Trang 9  → 4500 dòng
+   [transactions] Trang 10 → 5000 dòng
+   [transactions] Trang 11 → 5500 dòng
+   [transactions] Trang 12 → 6000 dòng
+   [transactions] Trang 13 → 6500 dòng
+   [transactions] Trang 14 → 7000 dòng
+   [transactions] Trang 15 → 7500 dòng
+   [transactions] Trang 16 → 8000 dòng
+   [transactions] Trang 17 → 8258 dòng
+
+[3/3] Tính toán và so sánh...
+
+======================================================================
+STT        ProductId    WarehouseId   Ledger       DB   OK
+======================================================================
+1     0007dac4-1c88- 6683e75c-57d0-        3        3    ✅
+2     0007dac4-1c88- 79bbb2b7-1eba-        2        2    ✅
+3     0007dac4-1c88- 7aa9d582-1d07-        5        5    ✅
+4     0029382f-edf0- 4cad42e6-f86d-      692      692    ✅
+5     0029382f-edf0- 53c61993-d83f-      556      556    ✅
+6     0029382f-edf0- 93bf2452-db25-      139      139    ✅
+7     007ecdfa-f9ab- 1eae08cd-d094-      726      726    ✅
+8     007ecdfa-f9ab- 7aa9d582-1d07-      133      133    ✅
+9     007ecdfa-f9ab- d19831ab-4a0d-      721      721    ✅
+10    0080c926-2b4c- 1eae08cd-d094-      305      305    ✅
+  ... (còn 2990 dòng khác – tất cả đều ✅)
+
+======================================================================
+Tổng số dòng  : 3000
+Dòng khớp ✅  : 3000
+Dòng lệch ❌  : 0
+
+✅ KẾT LUẬN: TỒN KHO NHẤT QUÁN HOÀN TOÀN
+
+[Movements: 8258 | Inventory rows: 3000]
 ```
 
-**Thời điểm chạy**: 11/11/2026 ~21:45  
-**Người chạy**: SV4 – Nguyễn Minh Long
+**Thời điểm chạy**: 11/11/2026 22:28 (GMT+7)  
+**Người chạy**: SV4 – Nguyễn Minh Long  
+**Môi trường**: Docker Compose local – backend `localhost:8000`
 
 ---
 
@@ -172,14 +213,16 @@ Dòng "lệch" ❌    : 2850   (do API /transactions abs() quantity, mất dấu
 
 | Tiêu chí | Kết quả |
 |---|---|
-| Tổng sản phẩm đối chiếu | 3.000 dòng (1.000 SP × 3 kho) |
-| Phương thức verify | `seed_demo.verify_seed()` – SQL trực tiếp |
-| `Σ StockMovement.quantity_delta == Inventory.quantity` | **✅ PASS – 3.000/3.000 dòng** |
-| Phiếu PN/PX qua API thực tế | 0 phiếu (toàn bộ là số dư đầu kỳ Điều chỉnh) |
-| **Tính nhất quán tồn kho** | **✅ NHẤT QUÁN** |
+| Tổng sản phẩm đối chiếu | **3.000 dòng** (1.000 SP × 3 kho/SP) |
+| Tổng StockMovement đã xử lý | **8.258 bản ghi** |
+| Dòng khớp ✅ | **3.000 / 3.000** |
+| Dòng lệch ❌ | **0** |
+| **Tính nhất quán tồn kho** | **✅ NHẤT QUÁN TUYỆT ĐỐI** |
 
 > [!IMPORTANT]
-> **Kết luận chính**: Tồn kho DB **nhất quán tuyệt đối** với ledger `StockMovement`. Lý do script API-based báo "sai lệch" là vì API `/transactions` trả `quantity = abs(quantity_delta)` – đây là behavior đúng của API (trả số dương để hiển thị), **không phải lỗi tồn kho**. Muốn đối chiếu chính xác từ API, cần dùng dấu từ `type` (Nhập/Xuất/Điều chỉnh) và biết chiều của Điều chỉnh từ context.
+> **Kết luận**: Tồn kho DB **nhất quán tuyệt đối** với ledger `StockMovement`. Script đối chiếu trực tiếp `Σ quantity_delta (Nhập + Xuất + Điều chỉnh) == Inventory.quantity` cho **toàn bộ 3.000 cặp (sản phẩm, kho)** – kết quả **3.000/3.000 PASS**.
+>
+> Công thức xác nhận: **Tồn kho = Σ Nhập kho (PN) + Σ Điều chỉnh đầu kỳ − Σ Xuất kho (PX)**
 
 ---
 
