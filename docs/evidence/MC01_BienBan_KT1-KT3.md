@@ -1,7 +1,7 @@
 # BIÊN BẢN KIỂM THỬ KT1–KT3
 ## Smart Warehouse – SV4 | Nhóm 4 thành viên
 
-> **Người thực hiện:** SV4  
+> **Người thực hiện:** SV4 – Nguyễn Nhật Long  
 > **Môi trường:** Staging local – Docker Compose (localhost:8000)  
 > **Thời gian chạy:** 08/11/2026, 21:43 – 21:53 (UTC+7)  
 > **Tool:** Postman Runner – Collection "Smart Warehouse – SV4 KT1-KT3"  

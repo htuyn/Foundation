@@ -141,3 +141,4 @@ Total requests:  ${data.metrics.http_reqs?.values?.count || 0}
     "docs/evidence/k6_summary_raw.json": JSON.stringify(data, null, 2),
   };
 }
+

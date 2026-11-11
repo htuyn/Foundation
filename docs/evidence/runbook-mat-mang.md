@@ -3,7 +3,7 @@
 > **Dự án**: Smart Warehouse – SV4  
 > **Phiên bản**: 1.0  
 > **Ngày cập nhật**: 11/11/2026  
-> **Người thực hiện**: SV4 – Nguyễn Minh Long
+> **Người thực hiện**: SV4 – Nguyễn Nhật Long
 
 ---
 
@@ -162,3 +162,4 @@ docker-compose exec -T postgres psql -U warehouse_user warehouse_db < backup_YYY
 - [ ] Truy cập `http://localhost:5173` → Frontend load được
 - [ ] Thử tạo phiếu test qua Postman → 201 Created
 - [ ] Kiểm tra Audit Log có ghi nhận → `GET /api/v1/audit-logs`
+

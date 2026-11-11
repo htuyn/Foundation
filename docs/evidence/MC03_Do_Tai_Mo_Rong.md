@@ -3,7 +3,7 @@
 > **Dự án**: Smart Warehouse – SV4  
 > **Mục tiêu**: Đo Latency / CPU / RAM tại 2 điểm quét → ngoại suy 4→8→16 điểm  
 > **Ngày thực hiện**: 11/11/2026  
-> **Người thực hiện**: SV4 – Nguyễn Minh Long  
+> **Người thực hiện**: SV4 – Nguyễn Nhật Long  
 > **Tool**: [k6](https://k6.io) + `docker stats`  
 > **Script**: [`scripts/k6_load_test.js`](../../scripts/k6_load_test.js)
 
@@ -193,3 +193,4 @@ winget install k6 --source winget
 # (xem chi tiết Mục 2.3)
 k6 run --vus 2 --duration 60s scripts/k6_load_test.js
 ```
+

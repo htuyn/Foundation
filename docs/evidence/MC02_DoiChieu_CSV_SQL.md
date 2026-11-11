@@ -3,7 +3,7 @@
 > **Dự án**: Smart Warehouse – SV4  
 > **Mục tiêu**: Chứng minh `Tồn kho = Σ Nhập kho (PN) − Σ Xuất kho (PX)`  
 > **Ngày thực hiện**: 11/11/2026  
-> **Người thực hiện**: SV4 – Nguyễn Minh Long  
+> **Người thực hiện**: SV4 – Nguyễn Nhật Long  
 > **Nhánh**: `feature/sv4-staging-rbac-testing`
 
 ---
@@ -204,7 +204,7 @@ Dòng lệch ❌  : 0
 ```
 
 **Thời điểm chạy**: 11/11/2026 22:28 (GMT+7)  
-**Người chạy**: SV4 – Nguyễn Minh Long  
+**Người chạy**: SV4 – Nguyễn Nhật Long  
 **Môi trường**: Docker Compose local – backend `localhost:8000`
 
 ---
