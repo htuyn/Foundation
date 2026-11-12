@@ -61,6 +61,27 @@ def test_inbound_document_requires_supplier_and_outbound_keeps_partner() -> None
     assert outbound.partner == "Đơn SO-1"
 
 
+def test_scanner_documents_require_valid_gate_direction_and_event_identity() -> None:
+    line = DocumentLineInput(productId=uuid4(), quantity=1, unitCost=0)
+    with pytest.raises(ValidationError):
+        DocumentInput(
+            type="Nhập kho", warehouseId=uuid4(), supplierId=uuid4(), scanPoint="GATE_A", lines=[line]
+        )
+
+    inbound = DocumentInput(
+        type="Nhập kho", warehouseId=uuid4(), supplierId=uuid4(), scanPoint="GATE_A",
+        scanEventId=uuid4(), clientTimestamp=datetime.now(timezone.utc), lines=[line],
+    )
+    assert inbound.scanPoint == "GATE_A"
+    assert inbound.scanEventId is not None
+
+    with pytest.raises(ValidationError):
+        DocumentInput(
+            type="Nhập kho", warehouseId=uuid4(), supplierId=uuid4(), scanPoint="GATE_B",
+            scanEventId=uuid4(), lines=[line],
+        )
+
+
 def test_adjustment_rejects_zero_and_scanner_requires_timezone_aware_timestamp() -> None:
     with pytest.raises(ValidationError):
         InventoryAdjustmentInput(productId=uuid4(), warehouseId=uuid4(), quantity=0, reason="Kiểm kê")

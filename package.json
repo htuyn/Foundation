@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test:vercel-routing": "node --test tests/vercel-routing.test.mjs"
+    "test:vercel-routing": "node --test tests/vercel-routing.test.mjs",
+    "test:gate-transactions": "node --experimental-strip-types --test tests/gate-transactions.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

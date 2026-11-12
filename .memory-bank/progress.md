@@ -1,3 +1,4 @@
+
 # Progress
 
 ## Đã triển khai (theo source và tài liệu hiện có)
@@ -181,3 +182,23 @@
 ## Hạ ngưỡng độ dài mật khẩu và yêu cầu tạo admin (2026-11-10)
 - Theo yêu cầu, password bootstrap/login/tạo user/reset chấp nhận 6–128 ký tự; hash scrypt và token/session không thay đổi. Cảnh báo mật khẩu ngắn dễ đoán, nên dùng passphrase mạnh hơn. Backend suite hiện 41 passed/7 skipped; build và routing tests 9/9 đạt.
 - Chưa tạo `admin@gmai.com`: Docker daemon không chạy, backend `127.0.0.1:8000` không phản hồi. Cổng `5432` có listener nhưng chưa xác minh DB thuộc ứng dụng; không chạy migration/ghi vào DB không rõ nguồn. Cần bật đúng Compose database, áp migration rồi chạy CLI admin.
+
+## SV2 scanner gate transactions (2026-11-12)
+- Thêm `GateScannerDialog` dùng camera, manual và QR receiver hiện có; GATE_A tạo một phiếu nhập nháp mỗi scan, GATE_B tạo một phiếu xuất nháp mỗi scan. Kho/supplier/partner được chọn trong UI. Phiếu không tự xác nhận nên không thay đổi tồn ngay.
+- `gateTransactions.ts` lưu mỗi command trong LocalStorage theo authenticated user trước khi gửi. `idempotencyKey` UUID v4 tách biệt `scanEventId`; body được persist sau lookup nhưng trước POST, retry dùng lại cùng key/body. Thêm retry/backoff, trạng thái queue, dead-letter và khóa đồng bộ đa tab qua Web Locks/fallback lease.
+- `POST /documents` được mở rộng metadata tùy chọn `scanPoint`, `scanEventId`, `clientTimestamp`; server lấy creator từ `CurrentUser`. Migration `0009_scanner_transaction_attribution` nối sau migration `0008_scanner_gate_attribution` vốn đã có dưới dạng thay đổi workspace chưa commit.
+- Kiểm tra sau sửa: `npm run build` đạt; `npm run test:vercel-routing` 10/10 đạt; backend `python -m pytest -q -p no:asyncio` 42 passed, 7 skipped; `python -m compileall -q app tests`, `git diff --check` và Alembic offline SQL đến revision `0009_scanner_transaction_attribution` đạt (UTF-8 output). PostgreSQL integration cho gate transaction thuộc nhóm skip; chưa chạy DB migration, API runtime, camera thật, API timeout test hoặc browser multi-tab.
+
+## P04 – Scanner Transaction Manager (2026-11-12)
+- Theo phê duyệt P03 của user, client gate transaction được triển khai trên contract source hiện có; không đổi API/backend/DB. `gateTransactionCore.ts` tạo/validate lệnh và map payload; `gateQueueStore.ts` dùng IndexedDB, migrate queue LocalStorage sau commit; `gateTransactions.ts` sync/retry/lock; UI giữ scanner camera/QR cũ và chỉ báo accepted sau khi queue persist thành công.
+- Gate A chỉ IN, Gate B chỉ OUT; UUIDv4 request key tách scan event ID; duplicate event/double submit được guard; scan barcode giống nhau với event mới là transaction mới. Payload resolved persist trước POST; successful response cache document ID và `createdAt` server time.
+- Kiểm thử P04: `npm run test:gate-transactions` 7/7; `npm run test:vercel-routing` 10/10; `npm run build` đạt. Unit tests gồm UUID/validation, IN/OUT/API mapping, same-barcode/new-event, retry key/body invariant, persistence failure prevents sync và manual double-click guard.
+- **Acceptance còn mở:** chưa chạy browser IndexedDB success/quota/reload test, backend/API runtime hoặc PostgreSQL integration, camera E2E, cross-tab/crash E2E. Vì P02 vẫn NOT READY và test/staging DB chưa xác định, không kết luận P04 hoàn tất; không chạy DB/API runtime.
+
+## P05 – Offline-first Storage & Persistent Queue (2026-11-12)
+- IndexedDB schema v2 thêm queueOrder để FIFO thực; queue-order tăng cùng IDB transaction lưu command. P04 IDB rows được backfill khi upgrade. Các command PENDING/SYNCING/RETRY_WAIT/PAUSED_AUTH/SYNCED/DEAD_LETTER giữ nguyên trong storage; không xóa record khi nhận ACK.
+- LocalStorage migration validate trước khi ghi, ghi source data + sequence + marker atomically, xóa source chỉ sau commit; parse/validation/transaction failure để source nguyên vẹn. Marker xử lý lần chạy lại nếu tab dừng sau commit.
+- Sync chỉ drain sau `GET /health` success (timeout 5s), nhận event online/offline/visibility và poll lại sau 5s nếu API chưa reachable; request giao dịch timeout 15s. FIFO chặn các lệnh sau khi head đang retry/auth pause. Web Locks hoặc IDB lease vẫn đảm bảo single owner.
+- Kiểm tra: `npm run build` đạt; `npm run test:gate-transactions` 11/11; `npm run test:vercel-routing` 11/11. Unit kiểm tra FIFO, migration record validation, no-sync khi connectivity false và sync sau reconnect giả lập.
+- **P05 acceptance chưa đóng:** các test không dùng IndexedDB thật/browser; chưa thực hiện offline multi-scan/reload/browser restart, migration rollback bằng trình duyệt, quota/eviction, multi-tab/crash hoặc reconnect/API/camera E2E. Không xác nhận dữ liệu qua reload/restart cho tới browser test. P02 chưa xác định test/staging API/DB; không kết nối runtime, không chạy migration.
+- Báo cáo: `docs/P05-offline-first-storage-queue.md`; chi tiết thao tác scanner: `docs/scanner-mobile.md`.

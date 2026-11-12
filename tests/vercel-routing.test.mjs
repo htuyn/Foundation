@@ -11,6 +11,10 @@ const connectionDialogSource = readProjectFile('../src/features/scanner/ScannerC
 const remoteScannerButtonSource = readProjectFile('../src/features/scanner/RemoteScannerButton.tsx')
 const documentsPageSource = readProjectFile('../src/pages/DocumentsPage.tsx')
 const directScannerSource = readProjectFile('../src/components/BarcodeScannerDialog.tsx')
+const gateScannerSource = readProjectFile('../src/features/scanner/GateScannerDialog.tsx')
+const gateTransactionsSource = readProjectFile('../src/features/scanner/gateTransactions.ts')
+const gateTransactionCoreSource = readProjectFile('../src/features/scanner/gateTransactionCore.ts')
+const gateQueueStoreSource = readProjectFile('../src/features/scanner/gateQueueStore.ts')
 
 test('Vercel rewrites direct SPA requests to the Vite entry document', () => {
   assert.deepEqual(vercelConfig.rewrites, [
@@ -90,4 +94,29 @@ test('draft line quantities are editable and camera scans rearm only after barco
   assert.match(connectionDialogSource, /scanner-connection-console/)
   assert.match(connectionDialogSource, /Promise\.resolve\(\)\.then\(\(\) => onScanRef\.current\(event\)\)\.then\(finishScan, finishScan\)/)
   assert.doesNotMatch(directScannerSource, /now - lastScanAt < 1800/)
+})
+
+test('gate scanners map inbound/outbound, validate EAN-13 and keep scan and transaction identifiers separate', () => {
+  assert.match(documentsPageSource, /type === 'Nhập kho' \? 'GATE_A' : 'GATE_B'/)
+  assert.match(gateScannerSource, /type === 'Nhập kho' \? 'GATE_A' : 'GATE_B'/)
+  assert.match(gateScannerSource, /validEan13\(barcode\)/)
+  assert.match(gateScannerSource, /scanEventId,/)
+  assert.match(gateTransactionCoreSource, /randomUUID \?\? globalThis\.crypto\?\.randomUUID/)
+  assert.match(gateTransactionsSource, /Idempotency-Key/)
+  assert.match(gateQueueStoreSource, /store\.add\(\{ \.\.\.record, queueOrder: sequence \}\)/)
+  assert.match(gateScannerSource, /persistBeforeSync\([\s\S]*syncGateTransactions/)
+  assert.match(gateTransactionsSource, /navigator\.locks\?\.request/)
+  assert.match(gateTransactionsSource, /status: 'SYNCED',[\s\S]*documentId: result\.id/)
+})
+
+test('gate queue uses durable IndexedDB migration, FIFO lifecycle and API reachability checks', () => {
+  assert.match(gateQueueStoreSource, /DATABASE_VERSION = 2/)
+  assert.match(gateQueueStoreSource, /openCursor\(\)/)
+  assert.match(gateQueueStoreSource, /await done[\s\S]*if \(migrated \|\| alreadyMigrated\) legacy\.forEach/)
+  assert.match(gateQueueStoreSource, /store\.add\(\{ \.\.\.record, queueOrder: sequence \}\)/)
+  assert.match(gateTransactionsSource, /nextFifoQueueItem\(await listStoredTransactions\(userId\), now\)/)
+  assert.match(gateTransactionsSource, /status: 'PAUSED_AUTH'/)
+  assert.match(gateTransactionsSource, /window\.addEventListener\('offline'/)
+  assert.match(gateTransactionsSource, /checkApiConnectivity/)
+  assert.match(gateTransactionsSource, /Date\.now\(\) \+ 5000/)
 })

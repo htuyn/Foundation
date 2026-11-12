@@ -59,6 +59,11 @@ def create_document(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
 ):
+    if payload.scanEventId is not None:
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key)::bigint)"),
+            {"key": f"scanner-event-{payload.scanEventId}"},
+        )
     if idempotency_key is not None:
         idempotency_key = idempotency_key.strip()
         if not idempotency_key or len(idempotency_key) > 255:
@@ -93,6 +98,30 @@ def create_document(
             )
             return prior_request.response_json
 
+    if payload.scanEventId is not None:
+        existing_scan_document = db.scalar(
+            select(StockDocument).where(StockDocument.scan_event_id == payload.scanEventId).with_for_update()
+        )
+        if existing_scan_document:
+            existing_lines = {(item.product_id, item.quantity, item.unit_cost) for item in existing_scan_document.items}
+            expected_lines = {(line.productId, line.quantity, line.unitCost) for line in payload.lines}
+            same_scan_transaction = (
+                existing_scan_document.created_by_user_id == user.id
+                and existing_scan_document.type == payload.type
+                and existing_scan_document.warehouse_id == payload.warehouseId
+                and existing_scan_document.scan_point == payload.scanPoint
+                and existing_scan_document.client_timestamp == payload.clientTimestamp
+                and existing_scan_document.supplier_id == payload.supplierId
+                and existing_scan_document.partner == payload.partner
+                and existing_lines == expected_lines
+            )
+            if not same_scan_transaction:
+                raise ApiError(409, "SCAN_EVENT_ALREADY_PROCESSED", "scanEventId đã được dùng cho một giao dịch khác.")
+            replayed_document = document_dict(existing_scan_document)
+            if idempotency_key:
+                prior_request.response_json = replayed_document
+            return replayed_document
+
     warehouse = db.get(Warehouse, payload.warehouseId)
     if not warehouse:
         raise ApiError(404, "WAREHOUSE_NOT_FOUND", "Không tìm thấy kho.")
@@ -123,6 +152,10 @@ def create_document(
         code=code,
         type=payload.type,
         warehouse_id=payload.warehouseId,
+        scan_point=payload.scanPoint,
+        scan_event_id=payload.scanEventId,
+        client_timestamp=payload.clientTimestamp,
+        created_by_user_id=user.id,
         supplier_id=supplier.id if supplier else None,
         supplier=supplier,
         partner=partner,

@@ -40,7 +40,7 @@ async function request<T>(path: string, init: RequestInit, retry: boolean): Prom
   if (!response.ok) {
     const payload = await response.json().catch(() => undefined)
     const error = new Error(payload?.error?.message ?? `Backend trả về lỗi HTTP ${response.status}.`)
-    Object.assign(error, { code: payload?.error?.code })
+    Object.assign(error, { code: payload?.error?.code, status: response.status })
     throw error
   }
   return (response.status === 204 ? undefined : await response.json()) as T
@@ -48,6 +48,18 @@ async function request<T>(path: string, init: RequestInit, retry: boolean): Prom
 
 export function authenticatedRequest<T>(path: string, init: RequestInit = {}) {
   return request<T>(path, init, true)
+}
+
+export async function checkApiConnectivity(timeoutMs = 5000) {
+  if (!API_BASE_URL) return false
+  try {
+    const apiUrl = new URL(API_BASE_URL, globalThis.location?.origin ?? 'http://localhost')
+    const healthUrl = new URL('/health', apiUrl.origin)
+    const response = await fetch(healthUrl, { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) })
+    return response.ok
+  } catch {
+    return false
+  }
 }
 
 export async function refreshAuth(): Promise<AuthResponse> {

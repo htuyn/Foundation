@@ -132,6 +132,10 @@ class StockDocument(Base):
     type: Mapped[str] = mapped_column(Text, nullable=False)
     warehouse_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False)
     supplier_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("suppliers.id", ondelete="RESTRICT"))
+    scan_point: Mapped[str | None] = mapped_column(Text)
+    scan_event_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, unique=True)
+    client_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     partner: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     status: Mapped[str] = mapped_column(Text, nullable=False, default="Bản nháp")
@@ -141,6 +145,8 @@ class StockDocument(Base):
     __table_args__ = (
         CheckConstraint("type IN ('Nhập kho', 'Xuất kho')", name="ck_stock_documents_type"),
         CheckConstraint("status IN ('Bản nháp', 'Đã xác nhận', 'Đã hủy')", name="ck_stock_documents_status"),
+        CheckConstraint("scan_point IS NULL OR scan_point IN ('GATE_A', 'GATE_B')", name="ck_stock_documents_scan_point"),
+        CheckConstraint("scan_point IS NULL OR (scan_point = 'GATE_A' AND type = 'Nhập kho') OR (scan_point = 'GATE_B' AND type = 'Xuất kho')", name="ck_stock_documents_scan_point_type"),
         Index("ix_stock_documents_type_status_created", "type", "status", "created_at"),
         Index("ix_stock_documents_supplier_id", "supplier_id"),
     )
@@ -221,6 +227,8 @@ class ScannerSession(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     mode: Mapped[str] = mapped_column(Text, nullable=False, default="api")
     status: Mapped[str] = mapped_column(Text, nullable=False, default="waiting_for_device")
+    gate_id: Mapped[str | None] = mapped_column(Text)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     device_name: Mapped[str | None] = mapped_column(Text)
@@ -249,9 +257,12 @@ class ScanEvent(Base):
 
     event_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scanner_sessions.id", ondelete="CASCADE"), nullable=False)
+    gate_id: Mapped[str | None] = mapped_column(Text)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     barcode: Mapped[str] = mapped_column(Text, nullable=False)
     format: Mapped[str] = mapped_column(Text, nullable=False)
     scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    server_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     device_id: Mapped[str | None] = mapped_column(Text)
     __table_args__ = (
         CheckConstraint("format IN ('EAN_13', 'EAN_8', 'UPC_A', 'UPC_E', 'CODE_128', 'CODE_39', 'QR_CODE', 'MANUAL')", name="ck_scan_events_format"),

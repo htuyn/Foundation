@@ -42,6 +42,10 @@ export interface WarehouseDocument {
   code: string
   type: 'Nhập kho' | 'Xuất kho'
   warehouseId: string
+  scanPoint?: 'GATE_A' | 'GATE_B' | null
+  scanEventId?: string | null
+  clientTimestamp?: string | null
+  createdByUserId?: string | null
   supplierId?: string | null
   partner: string
   createdAt: string

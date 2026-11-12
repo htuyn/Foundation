@@ -85,3 +85,23 @@ Sau thay đổi kiến trúc/tính năng/sửa lỗi, cập nhật tệp này c�
 - Đã thêm `CORS_ORIGIN_REGEX` (mặc định `None`) vào Settings và nối với middleware. Regex Preview được cấu hình bằng environment variable trên Render; Production vẫn dùng `CORS_ORIGINS`, local whitelist mặc định không đổi. Docker Compose cũng chuyển tiếp biến mới.
 - Thêm test `TestClient` qua middleware thật cho Production, hai Preview Foundation, project khác, suffix giả mạo, HTTP, preflight bootstrap, methods/headers, và defaults local.
 - Kiểm thử: backend `python -m pytest -q -p no:asyncio` đạt 34 passed, 7 skipped; routing tests 9/9; frontend build và `docker compose config --quiet` đạt. Chưa deploy/restart Render và chưa xác minh browser/production; cần đặt biến theo `docs/render-deployment.md`.
+
+## SV2 scanner transactions (2026-11-12)
+- Thêm scanner gate tại phiếu nhập/xuất: GATE_A tạo draft IN, GATE_B tạo draft OUT; dùng camera/manual và QR receiver hiện có. Mỗi scan tạo một draft riêng, không tự confirm hay đổi tồn.
+- Client lưu queue transaction theo user trong LocalStorage trước khi gửi; UUID v4 `idempotencyKey` riêng với `scanEventId`, giữ nguyên request body/key khi retry. Web Locks được dùng nếu có; fallback dùng lease LocalStorage. Network/timeout retry backoff tối đa 8 lần; API 400/403/404/409/422 vào dead-letter, 401 yêu cầu auth.
+- `POST /documents` nhận metadata tùy chọn scan point, scan event UUID và client timestamp; creator user được lấy từ authenticated `CurrentUser`. DB migration `0009_scanner_transaction_attribution` phụ thuộc revision `0008_scanner_gate_attribution` đang tồn tại dưới dạng thay đổi chưa commit trong workspace.
+- Kiểm tra: frontend build, routing/source tests và backend unit suite chạy sau cập nhật; PostgreSQL tests còn skip. Chưa xác minh migration trên DB thật, browser/mobile E2E, quota limit hoặc tranh chấp multi-tab thực tế.
+
+## P04 scanner transaction manager (2026-11-12)
+- User phê duyệt thiết kế P03 để triển khai phần client. Gate transaction queue chuyển sang IndexedDB, có migrate queue LocalStorage cũ sau khi IDB commit; không sửa `/documents`, schema hay auth/RBAC backend.
+- Scanner gate tái sử dụng camera/QR hiện có; mỗi accepted scan chụp snapshot context, tạo UUID v4 idempotency key khác scanEventId/barcode, validate trước khi enqueue. Queue write hoàn tất trước khi gọi sync; persistence failure không gọi API. Retry giữ nguyên key/body; cùng barcode nhưng event mới tạo transaction mới; double-submit manual và event đang xử lý được guard.
+- Web Locks + BroadcastChannel; fallback atomic lease trong IndexedDB. Queue keyed theo user. `createdAt` response lưu local thành serverTimestamp; không thêm API field.
+- Unit tests gate transaction: 7 passed; routing source/contract tests 10/10; frontend build đạt tại lần chạy cuối. Đây không chứng minh write/read IndexedDB trong browser hoặc camera/API runtime.
+- P02 blockers giữ nguyên: chưa xác nhận DB test/staging, API contract/SV3/SV4 approval chưa được chứng minh, backend không chạy trong phiên kiểm tra. Không chạy PostgreSQL, migration, API runtime, browser multi-tab hay camera E2E. P04 không được đánh dấu acceptance hoàn tất trước các kiểm tra này.
+
+## P05 offline-first queue (2026-11-12)
+- IndexedDB queue nâng schema lên version 2, sequence/queueOrder được ghi atomically cùng record; backfill P04 records khi upgrade. FIFO head-of-line: retry/auth pause không bị vượt qua; record không bị xóa khi thành công mà chỉ chuyển SYNCED sau server response.
+- LocalStorage migration validate toàn bộ nguồn trước ghi; record+sequence+marker ở cùng IDB transaction; chỉ xóa nguồn sau commit. Marker cho phép cleanup retry sau crash giữa commit và xóa source; lỗi giữ nguyên LocalStorage.
+- Lifecycle bổ sung PAUSED_AUTH (đọc tương thích AUTH_REQUIRED), API `/health` probe timeout 5s, event online/offline/visibility, timeout requests 15s và poll 5s cho pending khi API chưa reachable; không dựa riêng navigator.onLine.
+- Kiểm tra P05: `npm run build` đạt; gate unit 11/11; scanner/routing source-contract 11/11. Chưa có browser IndexedDB harness nên offline multi-scan/reload/browser restart, migration thực tế, quota, multi-tab/crash và reconnect E2E chưa được chứng minh.
+- P02 blocker vẫn mở; không kết nối DB/API runtime. P05 implementation đã có nhưng acceptance chưa hoàn tất đến khi browser persistence test chạy trên môi trường được xác nhận.

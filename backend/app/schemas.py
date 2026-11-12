@@ -88,6 +88,9 @@ class DocumentLineInput(ApiSchema):
 class DocumentInput(ApiSchema):
     type: Literal["Nhập kho", "Xuất kho"]
     warehouseId: UUID
+    scanPoint: Literal["GATE_A", "GATE_B"] | None = None
+    scanEventId: UUID | None = None
+    clientTimestamp: datetime | None = None
     supplierId: UUID | None = None
     partner: str = Field(default="", max_length=300)
     note: str = Field(default="", max_length=4000)
@@ -110,6 +113,14 @@ class DocumentInput(ApiSchema):
             raise ValueError("Phiếu xuất kho phải có người nhận hoặc mã đơn hàng.")
         if self.type == "Xuất kho" and self.supplierId is not None:
             raise ValueError("Phiếu xuất kho không nhận nhà cung cấp.")
+        if self.scanPoint == "GATE_A" and self.type != "Nhập kho":
+            raise ValueError("GATE_A chỉ hỗ trợ phiếu nhập kho.")
+        if self.scanPoint == "GATE_B" and self.type != "Xuất kho":
+            raise ValueError("GATE_B chỉ hỗ trợ phiếu xuất kho.")
+        if self.scanPoint is not None and self.scanEventId is None:
+            raise ValueError("Phiếu tạo từ scanner phải có scanEventId.")
+        if self.clientTimestamp is not None and (self.clientTimestamp.tzinfo is None or self.clientTimestamp.utcoffset() is None):
+            raise ValueError("clientTimestamp phải có timezone theo ISO 8601.")
         return self
 
 

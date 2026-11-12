@@ -1,5 +1,6 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from uuid import uuid4
 from urllib.parse import quote
 
@@ -514,6 +515,40 @@ def test_inbound_outbound_confirmation_updates_stock_atomically() -> None:
             insufficient_response = client.post(f"/api/v1/documents/{insufficient_outbound_id}/confirm")
             assert insufficient_response.status_code == 400
             assert insufficient_response.json()["error"]["code"] == "INSUFFICIENT_STOCK"
+
+            scan_event_id = str(uuid4())
+            client_timestamp = datetime.now(timezone.utc).isoformat()
+            scanner_document_payload = {
+                "type": "Nhập kho",
+                "warehouseId": warehouse_id,
+                "supplierId": supplier_response.json()["id"],
+                "partner": supplier_response.json()["name"],
+                "scanPoint": "GATE_A",
+                "scanEventId": scan_event_id,
+                "clientTimestamp": client_timestamp,
+                "lines": [{"productId": product_id, "quantity": 2, "unitCost": 100}],
+            }
+            scanner_document_response = client.post(
+                "/api/v1/documents",
+                headers={"Idempotency-Key": str(uuid4())},
+                json=scanner_document_payload,
+            )
+            assert scanner_document_response.status_code == 201
+            scanner_replay = client.post(
+                "/api/v1/documents",
+                headers={"Idempotency-Key": str(uuid4())},
+                json=scanner_document_payload,
+            )
+            assert scanner_replay.status_code == 201
+            assert scanner_replay.json()["id"] == scanner_document_response.json()["id"]
+            assert scanner_replay.json()["scanPoint"] == "GATE_A"
+            conflicting_scan = client.post(
+                "/api/v1/documents",
+                headers={"Idempotency-Key": str(uuid4())},
+                json={**scanner_document_payload, "lines": [{"productId": product_id, "quantity": 3, "unitCost": 100}]},
+            )
+            assert conflicting_scan.status_code == 409
+            assert conflicting_scan.json()["error"]["code"] == "SCAN_EVENT_ALREADY_PROCESSED"
 
             snapshot = client.get("/api/v1/bootstrap").json()
             inventory = next(row for row in snapshot["inventory"] if row["productId"] == product_id)
