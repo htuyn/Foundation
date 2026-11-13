@@ -233,3 +233,4 @@ Dựa trên số liệu đo đạc thực tế tại môi trường Staging loca
 | **Công cụ kiểm toán** | Script tự động đối chiếu tồn kho (`check_inventory.py`) | `scripts/check_inventory.py` |
 | **Kịch bản Demo** | Script tạo kho mới và khởi tạo tồn kho demo (`demo_add_warehouse.py`) | `scripts/demo_add_warehouse.py` |
 | **Hướng dẫn triển khai** | README hoàn chỉnh chuẩn hóa cho toàn dự án | `README.md` |
+

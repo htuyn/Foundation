@@ -250,7 +250,7 @@ curl "http://localhost:8000/api/v1/audit-logs?q=RBAC_DENIED" `
 |---|---|---|
 | [`MC01_BienBan_KT1-KT3.md`](docs/evidence/MC01_BienBan_KT1-KT3.md) | Biên bản KT1–KT3 đầy đủ, 35/35 PASS | ✅ Done |
 | [`MC02_DoiChieu_CSV_SQL.md`](docs/evidence/MC02_DoiChieu_CSV_SQL.md) | Đối chiếu tồn kho vs Ledger StockMovement: 3.000/3.000 khớp | ✅ Done |
-| [`MC03_Do_Tai_Mo_Rong.md`](docs/evidence/MC03_Do_Tai_Mo_Rong.md) | Kế hoạch đo tải k6 + bảng ngoại suy năng lực | ⏳ Template sẵn |
+| [`MC03_Do_Tai_Mo_Rong.md`](docs/evidence/MC03_Do_Tai_Mo_Rong.md) | Kết quả đo tải thực tế 2→16 VU + CPU/RAM + bảng ngoại suy năng lực | ✅ Done |
 | [`runbook-mat-mang.md`](docs/evidence/runbook-mat-mang.md) | Hướng dẫn khôi phục hệ thống khi mạng đứt / container lỗi | ✅ Done |
 
 ---
