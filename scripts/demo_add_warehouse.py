@@ -7,8 +7,25 @@ import sys
 import requests
 
 BASE_URL = "http://localhost:8000/api/v1"
-ADMIN_ID = "29981161-8d43-5ddf-8ca8-021b2af4fa58"
-NHAN_VIEN_ID = "36a45099-c617-5970-9e62-356c301a16bb"
+
+ADMIN_EMAIL = "admin@anphat.com"
+ADMIN_PASSWORD = "Demo@1234"   # Thay nếu bạn đặt mật khẩu khác khi chạy create_admin
+
+
+def login() -> dict:
+    """Đăng nhập lấy accessToken. Trả về headers đã có Authorization."""
+    res = requests.post(
+        f"{BASE_URL}/auth/login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+        timeout=10,
+    )
+    if res.status_code != 200:
+        print(f"❌ Đăng nhập thất bại: {res.status_code} - {res.text}")
+        print("💡 Hãy chạy: docker exec -it foundation-backend-1 python -m app.create_admin --email admin@anphat.com --name \"Admin Nguyễn\"")
+        sys.exit(1)
+    token = res.json().get("accessToken", "")
+    print(f"✔ Đăng nhập thành công ({ADMIN_EMAIL})")
+    return {"Authorization": f"Bearer {token}"}
 
 
 def main():
@@ -26,15 +43,23 @@ def main():
         print("💡 Hãy đảm bảo Docker Compose đang chạy (docker-compose up -d).")
         sys.exit(1)
 
-    # 2. Kiểm tra xem kho demo đã có chưa
-    headers_admin = {"X-User-ID": ADMIN_ID}
-    wh_list = requests.get(f"{BASE_URL}/warehouses?pageSize=50", headers=headers_admin).json()
+    # 2. Đăng nhập lấy access token
+    headers_admin = login()
+
+    # 3. Kiểm tra xem kho demo đã có chưa
+    wh_resp = requests.get(f"{BASE_URL}/warehouses?pageSize=50", headers=headers_admin).json()
+    # API có thể trả về list thẳng hoặc dict có phân trang {"items": [...]}
+    if isinstance(wh_resp, dict):
+        wh_list = wh_resp.get("items", wh_resp.get("data", wh_resp.get("warehouses", [])))
+    else:
+        wh_list = wh_resp
     demo_wh = next((w for w in wh_list if "Kho Demo Bảo Vệ" in w.get("name", "")), None)
 
     if not demo_wh:
         print("\n[1/3] Tạo kho mới qua POST /api/v1/warehouses...")
         payload_wh = {
             "name": "DEMO | Kho Demo Bảo Vệ - Tầng 2",
+            "code": "DEMO-BV-T2",
             "address": "Tầng 2, Tòa nhà B, Khu Công Nghệ Cao",
         }
         res_wh = requests.post(f"{BASE_URL}/warehouses", json=payload_wh, headers=headers_admin)
@@ -48,14 +73,18 @@ def main():
 
     wh_id = demo_wh["id"]
 
-    # 3. Lấy sản phẩm mẫu để seed tồn kho
+    # 4. Lấy sản phẩm mẫu để seed tồn kho
     print("\n[2/3] Lấy danh mục sản phẩm mẫu...")
-    products = requests.get(f"{BASE_URL}/products?pageSize=5", headers=headers_admin).json()
+    prod_resp = requests.get(f"{BASE_URL}/products?pageSize=5", headers=headers_admin).json()
+    if isinstance(prod_resp, dict):
+        products = prod_resp.get("items", prod_resp.get("data", prod_resp.get("products", [])))
+    else:
+        products = prod_resp
     if not products:
         print("❌ Không tìm thấy sản phẩm mẫu. Hãy chạy seed_demo.py trước.")
         sys.exit(1)
 
-    # 4. Điều chỉnh tồn kho qua POST /inventory/adjust
+    # 5. Điều chỉnh tồn kho qua POST /inventory/adjust
     print(f"\n[3/3] Nhập tồn kho mẫu vào kho '{demo_wh['name']}'...")
     seed_quantities = [100, 250, 500]
 
@@ -73,11 +102,15 @@ def main():
         else:
             print(f"   ⚠️ Lỗi điều chỉnh tồn cho '{prod['name']}': {res_adj.text}")
 
-    # 5. Kiểm tra kết quả qua GET /inventory
+    # 6. Kiểm tra kết quả qua GET /inventory
     print("\n" + "=" * 70)
     print("XÁC NHẬN TỒN KHO QUA GET /api/v1/inventory?warehouseId=" + wh_id)
     print("=" * 70)
-    inv_res = requests.get(f"{BASE_URL}/inventory?warehouseId={wh_id}", headers=headers_admin).json()
+    inv_resp = requests.get(f"{BASE_URL}/inventory?warehouseId={wh_id}", headers=headers_admin).json()
+    if isinstance(inv_resp, dict):
+        inv_res = inv_resp.get("items", inv_resp.get("data", []))
+    else:
+        inv_res = inv_resp
 
     print(f"{'STT':<4} {'Sản phẩm':<35} {'Kho':<20} {'Số lượng tồn':>12}")
     print("-" * 75)
@@ -91,3 +124,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
