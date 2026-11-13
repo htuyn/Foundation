@@ -77,16 +77,16 @@ def worker_task(vu_id, stop_time, base_url, prod_ids, supp_ids, wh_ids):
         try:
             if is_write:
                 payload = {
-                    "type": "PN",
-                    "partner": f"NCC Test VU{vu_id}",
+                    "type": "Nhập kho",
                     "supplierId": random.choice(supp_ids),
                     "warehouseId": random.choice(wh_ids),
                     "note": f"Load test VU={vu_id} iter={iteration}",
-                    "items": [
+                    "partner": "",
+                    "lines": [
                         {
                             "productId": random.choice(prod_ids),
                             "quantity": random.randint(1, 5),
-                            "unitPrice": 50000,
+                            "unitCost": 50000,
                         }
                     ],
                 }
@@ -206,3 +206,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
