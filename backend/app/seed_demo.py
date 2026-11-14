@@ -14,6 +14,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.core.auth import hash_password
 from app.db.session import SessionLocal
 from app.models import (
     AuditLog,
@@ -563,30 +564,51 @@ def verify_seed(session: Session, rows: dict) -> dict[str, int]:
 
 # ---------------------------------------------------------------------------
 # RBAC demo users (idempotent – dùng uuid5 namespace)
+# Mật khẩu mặc định theo vai trò; thay đổi sau khi triển khai production.
 # ---------------------------------------------------------------------------
 _RBAC_USERS = [
-    {"name": "Admin Nguyễn",  "email": "admin@anphat.com",   "role": "Quản trị viên"},
-    {"name": "Quản lý Trần",  "email": "quanly@anphat.com",  "role": "Quản lý kho"},
-    {"name": "Thủ kho Lê",    "email": "thukho@anphat.com",  "role": "Nhân viên kho"},
-    {"name": "Viewer Phạm",   "email": "viewer@anphat.com",  "role": "Chỉ xem"},
+    {"name": "Admin Nguyễn",  "email": "admin@anphat.com",   "role": "Quản trị viên", "default_password": "Admin2026!"},
+    {"name": "Quản lý Trần",  "email": "quanly@anphat.com",  "role": "Quản lý kho",   "default_password": "Quanly2026!"},
+    {"name": "Thủ kho Lê",    "email": "thukho@anphat.com",  "role": "Nhân viên kho", "default_password": "Thukho2026!"},
+    {"name": "Viewer Phạm",   "email": "viewer@anphat.com",  "role": "Chỉ xem",       "default_password": "Viewer2026!"},
 ]
 
 
 def _seed_rbac_users(session: Session) -> None:
-    """Upsert 4 user demo RBAC – an toàn khi chạy nhiều lần."""
+    """Upsert 4 user demo RBAC – an toàn khi chạy nhiều lần.
+
+    Mỗi tài khoản được gán mật khẩu mặc định nếu chưa có (password_hash IS NULL).
+    Nếu đã có mật khẩu, trường password_hash không bị ghi đè để bảo toàn mật khẩu
+    đã được đổi thủ công.
+    """
     _ns = UUID("12345678-rbac-0000-demo-000000000000", version=4) if False else NAMESPACE_URL
     for u in _RBAC_USERS:
         uid = uuid5(_ns, f"rbac-user-{u['email']}")
         stmt = (
             pg_insert(User)
-            .values(id=uid, name=u["name"], email=u["email"], role=u["role"], active=True)
+            .values(
+                id=uid,
+                name=u["name"],
+                email=u["email"],
+                role=u["role"],
+                active=True,
+                password_hash=hash_password(u["default_password"]),
+            )
             .on_conflict_do_update(
                 index_elements=[User.id],
                 set_={"name": u["name"], "role": u["role"], "active": True},
+                # Không ghi đè password_hash nếu đã được đặt thủ công
             )
         )
         session.execute(stmt)
-    print("Đã seed tài khoản RBAC demo; các tài khoản này chưa có mật khẩu và không thể đăng nhập.")
+    print(
+        "Đã seed tài khoản RBAC demo với mật khẩu mặc định:\n"
+        "  admin@anphat.com   / Admin2026!\n"
+        "  quanly@anphat.com  / Quanly2026!\n"
+        "  thukho@anphat.com  / Thukho2026!\n"
+        "  viewer@anphat.com  / Viewer2026!\n"
+        "Lưu ý: đổi mật khẩu trước khi trình bày bảo vệ nếu cần."
+    )
 
 def main() -> None:
     now = datetime.now(timezone.utc)
