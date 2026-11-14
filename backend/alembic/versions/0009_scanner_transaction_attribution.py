@@ -1,15 +1,15 @@
 """Attribute scanner-created draft documents to their scan and user.
 
-Revision ID: 0009_scanner_transaction_attribution
-Revises: 0008_scanner_gate_attribution
+Revision ID: 0009_scanner_tx_attr
+Revises: 0008_scanner_gate_attr
 Create Date: 2026-11-12
 """
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0009_scanner_transaction_attribution"
-down_revision = "0008_scanner_gate_attribution"
+revision = "0009_scanner_tx_attr"
+down_revision = "0008_scanner_gate_attr"
 branch_labels = None
 depends_on = None
 

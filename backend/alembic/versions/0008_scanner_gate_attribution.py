@@ -1,6 +1,6 @@
 """Add gate and authenticated-user attribution to scanner records.
 
-Revision ID: 0008_scanner_gate_attribution
+Revision ID: 0008_scanner_gate_attr
 Revises: 0007_user_auth_sessions
 Create Date: 2026-11-12
 """
@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0008_scanner_gate_attribution"
+revision = "0008_scanner_gate_attr"
 down_revision = "0007_user_auth_sessions"
 branch_labels = None
 depends_on = None
