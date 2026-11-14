@@ -6,19 +6,71 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {"key": "base_url",             "value": "http://localhost:8000", "type": "string"},
-    {"key": "admin_id",             "value": "29981161-8d43-5ddf-8ca8-021b2af4fa58", "type": "string"},
-    {"key": "storekeeper_id",       "value": "ece3f300-dc24-53c3-a911-3c23919c4fb3", "type": "string"},
-    {"key": "scanner_id",           "value": "36a45099-c617-5970-9e62-356c301a16bb", "type": "string"},
-    {"key": "viewer_id",            "value": "a8fda5f4-2c3f-599f-8e26-f02973bbf2d6", "type": "string"},
-    {"key": "warehouse_id",         "value": "FILL_FROM_SETUP", "type": "string"},
-    {"key": "product_id",           "value": "FILL_FROM_SETUP", "type": "string"},
-    {"key": "supplier_id",          "value": "FILL_FROM_SETUP", "type": "string"},
-    {"key": "kt1_document_id",      "value": "", "type": "string"},
-    {"key": "kt2_document_id",      "value": "", "type": "string"},
-    {"key": "kt2_document_code",    "value": "", "type": "string"},
-    {"key": "kt1_qty_before",       "value": "0", "type": "string"},
-    {"key": "idempotency_key_kt2",  "value": "550e8400-e29b-41d4-a716-446655440099", "type": "string"}
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "admin_id",
+      "value": "29981161-8d43-5ddf-8ca8-021b2af4fa58",
+      "type": "string"
+    },
+    {
+      "key": "storekeeper_id",
+      "value": "ece3f300-dc24-53c3-a911-3c23919c4fb3",
+      "type": "string"
+    },
+    {
+      "key": "scanner_id",
+      "value": "36a45099-c617-5970-9e62-356c301a16bb",
+      "type": "string"
+    },
+    {
+      "key": "viewer_id",
+      "value": "a8fda5f4-2c3f-599f-8e26-f02973bbf2d6",
+      "type": "string"
+    },
+    {
+      "key": "warehouse_id",
+      "value": "FILL_FROM_SETUP",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "FILL_FROM_SETUP",
+      "type": "string"
+    },
+    {
+      "key": "supplier_id",
+      "value": "FILL_FROM_SETUP",
+      "type": "string"
+    },
+    {
+      "key": "kt1_document_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "kt2_document_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "kt2_document_code",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "kt1_qty_before",
+      "value": "0",
+      "type": "string"
+    },
+    {
+      "key": "idempotency_key_kt2",
+      "value": "550e8400-e29b-41d4-a716-446655440099",
+      "type": "string"
+    }
   ],
   "item": [
     {
@@ -137,13 +189,27 @@
           "name": "KT1-01 – GET Tồn kho TRƯỚC (ghi lại quantity)",
           "request": {
             "method": "GET",
-            "header": [{"key": "X-User-Id", "value": "{{storekeeper_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{storekeeper_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/api/v1/inventory?warehouseId={{warehouse_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "inventory"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inventory"
+              ],
               "query": [
-                {"key": "warehouseId", "value": "{{warehouse_id}}"}
+                {
+                  "key": "warehouseId",
+                  "value": "{{warehouse_id}}"
+                }
               ]
             },
             "description": "📸 CHỤP MÀN HÌNH: ghi lại quantity trước khi tạo phiếu.\nNote: Script tự động lưu quantity của product_id vào kt1_qty_before."
@@ -187,8 +253,14 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "X-User-Id",    "value": "{{storekeeper_id}}"},
-              {"key": "Content-Type", "value": "application/json"}
+              {
+                "key": "X-User-Id",
+                "value": "{{storekeeper_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{base_url}}/api/v1/documents",
             "body": {
@@ -230,8 +302,14 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "X-User-Id",    "value": "{{storekeeper_id}}"},
-              {"key": "Content-Type", "value": "application/json"}
+              {
+                "key": "X-User-Id",
+                "value": "{{storekeeper_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{base_url}}/api/v1/documents/{{kt1_document_id}}/confirm",
             "description": "📸 CHỤP MÀN HÌNH:\n- Expect: 200 OK\n- Status: Đã xác nhận"
@@ -263,13 +341,27 @@
           "name": "KT1-04 – GET Tồn kho SAU (xác nhận tăng 15)",
           "request": {
             "method": "GET",
-            "header": [{"key": "X-User-Id", "value": "{{storekeeper_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{storekeeper_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/api/v1/inventory?warehouseId={{warehouse_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "inventory"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inventory"
+              ],
               "query": [
-                {"key": "warehouseId", "value": "{{warehouse_id}}"}
+                {
+                  "key": "warehouseId",
+                  "value": "{{warehouse_id}}"
+                }
               ]
             },
             "description": "📸 CHỤP MÀN HÌNH:\n- Expect: quantity của product_id = (TRƯỚC) + 15\n\n✅ KT1 PASSED nếu Delta = 15."
@@ -314,14 +406,31 @@
           "name": "KT1-05 – GET Audit Log (xác nhận ghi vết)",
           "request": {
             "method": "GET",
-            "header": [{"key": "X-User-Id", "value": "{{admin_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/api/v1/audit-logs?q=PN-&pageSize=5",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "audit-logs"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "audit-logs"
+              ],
               "query": [
-                {"key": "q",        "value": "PN-"},
-                {"key": "pageSize", "value": "5"}
+                {
+                  "key": "q",
+                  "value": "PN-"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "5"
+                }
               ]
             },
             "description": "📸 CHỤP MÀN HÌNH: Audit Log có 2 bản ghi:\n- 'Tạo phiếu PN-...'\n- 'Xác nhận phiếu PN-...'"
@@ -360,9 +469,18 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "X-User-Id",        "value": "{{storekeeper_id}}"},
-              {"key": "Content-Type",      "value": "application/json"},
-              {"key": "Idempotency-Key",   "value": "{{idempotency_key_kt2}}"}
+              {
+                "key": "X-User-Id",
+                "value": "{{storekeeper_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key_kt2}}"
+              }
             ],
             "url": "{{base_url}}/api/v1/documents",
             "body": {
@@ -397,9 +515,18 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "X-User-Id",        "value": "{{storekeeper_id}}"},
-              {"key": "Content-Type",      "value": "application/json"},
-              {"key": "Idempotency-Key",   "value": "{{idempotency_key_kt2}}"}
+              {
+                "key": "X-User-Id",
+                "value": "{{storekeeper_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key_kt2}}"
+              }
             ],
             "url": "{{base_url}}/api/v1/documents",
             "body": {
@@ -447,8 +574,14 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "X-User-Id",    "value": "{{storekeeper_id}}"},
-              {"key": "Content-Type", "value": "application/json"}
+              {
+                "key": "X-User-Id",
+                "value": "{{storekeeper_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{base_url}}/api/v1/documents/{{kt2_document_id}}/confirm",
             "description": "Confirm phiếu lần 1 → 200 OK"
@@ -477,8 +610,14 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "X-User-Id",    "value": "{{storekeeper_id}}"},
-              {"key": "Content-Type", "value": "application/json"}
+              {
+                "key": "X-User-Id",
+                "value": "{{storekeeper_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{base_url}}/api/v1/documents/{{kt2_document_id}}/confirm",
             "description": "📸 CHỤP MÀN HÌNH:\n- Expect: 200 OK (không phải lỗi)\n- Status vẫn là 'Đã xác nhận'\n- Tồn kho KHÔNG bị cộng thêm lần 2\n\nĐây là idempotency tại confirm endpoint."
@@ -507,17 +646,34 @@
           "name": "KT2-05 – GET Transactions (tồn kho không đổi lần 2)",
           "request": {
             "method": "GET",
-            "header": [{"key": "X-User-Id", "value": "{{admin_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/api/v1/transactions?q={{kt2_document_code}}&pageSize=10",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "transactions"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transactions"
+              ],
               "query": [
-                {"key": "q",        "value": "{{kt2_document_code}}"},
-                {"key": "pageSize", "value": "10"}
+                {
+                  "key": "q",
+                  "value": "{{kt2_document_code}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                }
               ]
             },
-            "description": "📸 CHỤP MÀN HÌNH:\n- Expect: chỉ có đúng các movements của phiếu KT2 (không có movement thứ 2 từ confirm lần 2)"
+            "description": "📸 CHỤP MÀN HÌNH:\n- Expect: chỉ có đúng 1 movement cho product_id (không bị cộng 2 lần)\n- Assert: số lượng movement của document KT2 phải đúng bằng số lines (1 line × 1 phiếu = 1 movement)\n\n✅ KT2 PASSED nếu countMovements == 1 (không phải 2)"
           },
           "event": [
             {
@@ -535,7 +691,41 @@
                   "const data = pm.response.json();",
                   "const txs = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);",
                   "",
-                  "console.log('KT2 Transactions (', txs.length, 'rows):', JSON.stringify(txs, null, 2));"
+                  "// FIX KT2: Assert cứng – tồn kho KHÔNG bị trừ/cộng 2 lần",
+                  "// Confirm idempotent: chỉ được sinh đúng 1 movement cho product_id này",
+                  "const pid = pm.collectionVariables.get('product_id');",
+                  "const docCode = pm.collectionVariables.get('kt2_document_code');",
+                  "",
+                  "// Lọc movements thuộc phiếu KT2 và đúng product",
+                  "const kt2Movements = txs.filter(t => {",
+                  "  const matchDoc  = t.code === docCode || (t.documentCode && t.documentCode === docCode);",
+                  "  const matchProd = !pid || t.productId === pid || t.product_id === pid;",
+                  "  return matchDoc && matchProd;",
+                  "});",
+                  "",
+                  "console.log('KT2 – Document code:', docCode);",
+                  "console.log('KT2 – Product ID:', pid);",
+                  "console.log('KT2 – Số movement tìm thấy:', kt2Movements.length);",
+                  "console.log('KT2 – Chi tiết movements:', JSON.stringify(kt2Movements, null, 2));",
+                  "",
+                  "// Assert QUAN TRỌNG: chỉ có đúng 1 movement (không bị nhân đôi)",
+                  "pm.test('KT2 IDEMPOTENCY – Tồn kho không bị cộng 2 lần (movement count = 1)', () => {",
+                  "  pm.expect(kt2Movements.length,",
+                  "    `Idempotency FAILED: Tìm thấy ${kt2Movements.length} movements cho phiếu ${docCode} ` +",
+                  "    `(phải đúng 1). Confirm lần 2 đã tạo movement thừa!`",
+                  "  ).to.eql(1);",
+                  "});",
+                  "",
+                  "// Assert số lượng delta đúng (không bị nhân đôi)",
+                  "if (kt2Movements.length > 0) {",
+                  "  const totalDelta = kt2Movements.reduce((s, t) => s + (t.quantityDelta || t.quantity_delta || t.quantity || 0), 0);",
+                  "  pm.test('KT2 – Tổng quantity delta = 5 (không phải 10)', () => {",
+                  "    pm.expect(totalDelta,",
+                  "      `Delta phải = 5 nhưng nhận ${totalDelta} – phiếu bị confirm 2 lần!`",
+                  "    ).to.eql(5);",
+                  "  });",
+                  "  console.log('✅ KT2 PASSED: Chỉ có 1 movement, totalDelta =', totalDelta);",
+                  "}"
                 ]
               }
             }
@@ -552,8 +742,14 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "X-User-Id",    "value": "{{viewer_id}}"},
-              {"key": "Content-Type", "value": "application/json"}
+              {
+                "key": "X-User-Id",
+                "value": "{{viewer_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{base_url}}/api/v1/documents",
             "body": {
@@ -591,8 +787,14 @@
           "request": {
             "method": "POST",
             "header": [
-              {"key": "X-User-Id",    "value": "{{viewer_id}}"},
-              {"key": "Content-Type", "value": "application/json"}
+              {
+                "key": "X-User-Id",
+                "value": "{{viewer_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{base_url}}/api/v1/products",
             "body": {
@@ -621,18 +823,47 @@
           "name": "KT3-03 – Viewer DELETE (bất kỳ) → expect 403",
           "request": {
             "method": "DELETE",
-            "header": [{"key": "X-User-Id", "value": "{{viewer_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{viewer_id}}"
+              }
+            ],
             "url": "{{base_url}}/api/v1/products/00000000-0000-0000-0000-000000000001",
-            "description": "DELETE với UUID giả – Viewer vẫn phải bị chặn 403 trước khi server kiểm tra product_id có tồn tại không."
+            "description": "📸 CHỤP MÀN HÌNH (minh chứng KT3 quan trọng nhất):\n- Header: X-User-Id = UUID của Viewer Phạm (a8fda5f4-...)\n- Method: DELETE (mutating method)\n- Expect: 403 Forbidden – middleware RBAC phải chặn TRƯỚC khi kiểm tra product có tồn tại\n\n✅ Viewer DELETE bất kỳ UUID nào cũng phải ra 403 (không phải 404)"
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('KT3-03 – Viewer DELETE → 403', () => pm.response.to.have.status(403));",
+                  "// FIX KT3: Assert đầy đủ cho viewer DELETE",
+                  "pm.test('KT3-03 – Viewer DELETE → 403 FORBIDDEN', () => pm.response.to.have.status(403));",
+                  "",
                   "if (pm.response.code === 403) {",
-                  "  console.log('✅ KT3-03 PASSED: Viewer bị chặn 403 trên DELETE');",
+                  "  const json = pm.response.json();",
+                  "  // Hỗ trợ cả format {error: {code:...}} và {detail: {code:...}}",
+                  "  const errorCode = (json.error && json.error.code) || (json.detail && json.detail.code) || json.code || '';",
+                  "  const errorMsg  = (json.error && json.error.message) || (json.detail && json.detail.message) || json.message || '';",
+                  "",
+                  "  pm.test('KT3-03 – Error code = FORBIDDEN', () => {",
+                  "    pm.expect(String(errorCode), 'Error code phải là FORBIDDEN').to.eql('FORBIDDEN');",
+                  "  });",
+                  "",
+                  "  pm.test('KT3-03 – Message đề cập Chỉ xem hoặc viewer', () => {",
+                  "    const lc = String(errorMsg).toLowerCase();",
+                  "    pm.expect(",
+                  "      lc.includes('chỉ xem') || lc.includes('viewer') || lc.includes('forbidden'),",
+                  "      `Message '${errorMsg}' phải đề cập vai trò Chỉ xem`",
+                  "    ).to.be.true;",
+                  "  });",
+                  "",
+                  "  // Xác nhận không phải 404 (middleware phải chặn trước khi kiểm tra resource)",
+                  "  pm.test('KT3-03 – Không phải 404 (RBAC check trước resource check)', () => {",
+                  "    pm.expect(pm.response.code).to.not.eql(404);",
+                  "  });",
+                  "",
+                  "  console.log('✅ KT3-03 PASSED: Viewer DELETE bị chặn 403 | code =', errorCode, '| msg =', errorMsg);",
                   "} else {",
                   "  console.error('❌ Expect 403 nhưng nhận', pm.response.code, ':', pm.response.text().substring(0, 300));",
                   "}"
@@ -645,7 +876,12 @@
           "name": "KT3-04 – Nhân viên kho DELETE → expect 403",
           "request": {
             "method": "DELETE",
-            "header": [{"key": "X-User-Id", "value": "{{scanner_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{scanner_id}}"
+              }
+            ],
             "url": "{{base_url}}/api/v1/products/00000000-0000-0000-0000-000000000001",
             "description": "📸 CHỤP MÀN HÌNH:\nNhân viên kho cũng bị chặn DELETE → 403\n(Chỉ Quản trị viên và Quản lý kho mới được DELETE)"
           },
@@ -669,12 +905,28 @@
           "name": "KT3-05 – Viewer GET /products → expect 200 (được phép đọc)",
           "request": {
             "method": "GET",
-            "header": [{"key": "X-User-Id", "value": "{{viewer_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{viewer_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/api/v1/products?pageSize=5",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "products"],
-              "query": [{"key": "pageSize", "value": "5"}]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "5"
+                }
+              ]
             },
             "description": "📸 CHỤP MÀN HÌNH:\nViewer ĐƯỢC phép GET – 200 OK.\nChứng minh RBAC chính xác: Chỉ xem = GET only."
           },
@@ -698,14 +950,31 @@
           "name": "KT3-06 – Admin GET Audit Log → tìm [RBAC DENY]",
           "request": {
             "method": "GET",
-            "header": [{"key": "X-User-Id", "value": "{{admin_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/api/v1/audit-logs?q=RBAC+DENY&pageSize=10",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "audit-logs"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "audit-logs"
+              ],
               "query": [
-                {"key": "q",        "value": "RBAC DENY"},
-                {"key": "pageSize", "value": "10"}
+                {
+                  "key": "q",
+                  "value": "RBAC DENY"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                }
               ]
             },
             "description": "📸 CHỤP MÀN HÌNH (minh chứng quan trọng!):\n- Expect: có các bản ghi [RBAC DENY] từ KT3-01, 02, 03, 04\n- Format: '[RBAC DENY] Chỉ xem | POST /api/v1/documents'\n- actorName: 'Viewer Phạm' hoặc 'Thủ kho Lê'"
@@ -744,14 +1013,16 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/api/v1/products",
-            "description": "Test thiếu header → 401 MISSING_USER_HEADER"
+            "description": "FIX: Backend dùng Bearer token (Authorization header), không phải X-User-Id.\nRequest không có header Authorization → 401 MISSING_ACCESS_TOKEN"
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('KT3-07 – Thiếu header → 401', () => pm.response.to.have.status(401));",
+                  "// FIX KT3-07: Backend dùng Bearer JWT (Authorization header)",
+                  "// Không có Authorization header → 401",
+                  "pm.test('KT3-07 – Thiếu Authorization header → 401', () => pm.response.to.have.status(401));",
                   "",
                   "if (pm.response.code !== 401) {",
                   "  console.error('❌ Expect 401 nhưng nhận', pm.response.code, ':', pm.response.text().substring(0, 300));",
@@ -759,9 +1030,17 @@
                   "}",
                   "",
                   "const json = pm.response.json();",
+                  "// Hỗ trợ cả format {error: {code:...}} và {detail: {code:...}}",
                   "const errorCode = (json.error && json.error.code) || (json.detail && json.detail.code) || json.code || '';",
-                  "pm.test('Code = MISSING_USER_HEADER', () => pm.expect(String(errorCode)).to.eql('MISSING_USER_HEADER'));",
-                  "console.log('✅ KT3-07 PASSED: 401 khi thiếu header');"
+                  "",
+                  "// FIX: code phải là MISSING_ACCESS_TOKEN (không phải MISSING_USER_HEADER)",
+                  "pm.test('Code = MISSING_ACCESS_TOKEN', () => {",
+                  "  pm.expect(String(errorCode),",
+                  "    `Error code '${errorCode}' không đúng. Phải là MISSING_ACCESS_TOKEN vì backend dùng Bearer JWT`",
+                  "  ).to.eql('MISSING_ACCESS_TOKEN');",
+                  "});",
+                  "",
+                  "console.log('✅ KT3-07 PASSED: 401 MISSING_ACCESS_TOKEN khi không có Authorization header');"
                 ]
               }
             }
@@ -777,12 +1056,28 @@
           "name": "CSV-01 – GET Inventory (tất cả sản phẩm DEMO)",
           "request": {
             "method": "GET",
-            "header": [{"key": "X-User-Id", "value": "{{admin_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/api/v1/inventory?pageSize=50",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "inventory"],
-              "query": [{"key": "pageSize", "value": "50"}]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "50"
+                }
+              ]
             },
             "description": "Export inventory để so sánh với Transactions."
           },
@@ -815,12 +1110,28 @@
           "name": "CSV-02 – GET Transactions (kiểm tra ledger)",
           "request": {
             "method": "GET",
-            "header": [{"key": "X-User-Id", "value": "{{admin_id}}"}],
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}"
+              }
+            ],
             "url": {
               "raw": "{{base_url}}/api/v1/transactions?pageSize=50",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "transactions"],
-              "query": [{"key": "pageSize", "value": "50"}]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "50"
+                }
+              ]
             },
             "description": "Lấy stock movements để đối chiếu với inventory.\nTồn = SUM(Nhập) - SUM(Xuất) + Điều chỉnh"
           },
