@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "neon-foundation": {
+      "type": "remote",
+      "url": "https://mcp.neon.tech/mcp?readonly=true&projectId=gentle-poetry-11654376&category=querying&category=schema",
+      "oauth": {
+        "redirect_uri": "http://127.0.0.1:19876/callback"
+      },
+      "enabled": true
+    }
+  }
+}
