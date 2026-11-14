@@ -34,15 +34,16 @@ export const options = {
 // ─── Cấu hình ────────────────────────────────────────────────────────────────
 const BASE_URL = __ENV.BASE_URL || "http://localhost:8000";
 
-// UUID nhân viên kho (seed_demo.py) – dùng để gửi X-User-ID header
-const NHAN_VIEN_ID = "36a45099-c617-5970-9e62-356c301a16bb";
+// Bearer token – truyền qua: -e AUTH_TOKEN=<token>
+// Lấy token: đăng nhập POST /api/v1/auth/login {"email":"thukho@anphat.com","password":"Thukho123!"}
+const AUTH_TOKEN = __ENV.AUTH_TOKEN || "";
 
-// ID sản phẩm và nhà cung cấp – lấy từ staging thực tế
-// Nếu chưa biết, chạy: curl http://localhost:8000/api/v1/products?pageSize=5
-// và: curl http://localhost:8000/api/v1/suppliers?pageSize=5
-const PRODUCT_ID  = __ENV.PRODUCT_ID  || "00000000-0000-0000-0000-000000000001"; // THAY bằng UUID thực
-const SUPPLIER_ID = __ENV.SUPPLIER_ID || "00000000-0000-0000-0000-000000000002"; // THAY bằng UUID thực
-const WAREHOUSE_ID= __ENV.WAREHOUSE_ID|| "00000000-0000-0000-0000-000000000003"; // THAY bằng UUID thực
+// ID sản phẩm, kho, nhà cung cấp – lấy từ staging thực tế
+// Script run_full_test.ps1 tự động truyền các biến này.
+// Nếu chạy thủ công: thêm -e PRODUCT_ID=<uuid> -e WAREHOUSE_ID=<uuid> -e SUPPLIER_ID=<uuid>
+const PRODUCT_ID   = __ENV.PRODUCT_ID   || "00000000-0000-0000-0000-000000000001";
+const SUPPLIER_ID  = __ENV.SUPPLIER_ID  || "00000000-0000-0000-0000-000000000002";
+const WAREHOUSE_ID = __ENV.WAREHOUSE_ID || "00000000-0000-0000-0000-000000000003";
 
 // ─── Hàm tạo phiếu nhập kho ──────────────────────────────────────────────────
 // FIX: type phải là "Nhập kho" (không phải "PN"), lines thay items, unitCost thay unitPrice
@@ -65,7 +66,7 @@ function createInboundDocument(vuId, iteration) {
 
   const headers = {
     "Content-Type":    "application/json",
-    "X-User-Id":       NHAN_VIEN_ID,    // FIX: đúng case "X-User-Id" (khớp RBAC middleware)
+    "Authorization":   `Bearer ${AUTH_TOKEN}`,  // FIX: dùng Bearer token thay X-User-Id cũ
     "Idempotency-Key": idempotencyKey,
   };
 
@@ -73,10 +74,9 @@ function createInboundDocument(vuId, iteration) {
   return res;
 }
 
-// ─── Hàm GET inventory (đọc tồn kho) ────────────────────────────────────────
 function getInventory() {
   const res = http.get(`${BASE_URL}/api/v1/inventory?pageSize=50`, {
-    headers: { "X-User-Id": NHAN_VIEN_ID },  // FIX: đúng case header
+    headers: { "Authorization": `Bearer ${AUTH_TOKEN}` },
   });
   return res;
 }

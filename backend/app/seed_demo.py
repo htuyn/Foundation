@@ -564,29 +564,47 @@ def verify_seed(session: Session, rows: dict) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 # RBAC demo users (idempotent – dùng uuid5 namespace)
 # ---------------------------------------------------------------------------
+
+# Mật khẩu mặc định cho từng tài khoản demo
 _RBAC_USERS = [
-    {"name": "Admin Nguyễn",  "email": "admin@anphat.com",   "role": "Quản trị viên"},
-    {"name": "Quản lý Trần",  "email": "quanly@anphat.com",  "role": "Quản lý kho"},
-    {"name": "Thủ kho Lê",    "email": "thukho@anphat.com",  "role": "Nhân viên kho"},
-    {"name": "Viewer Phạm",   "email": "viewer@anphat.com",  "role": "Chỉ xem"},
+    {"name": "Admin Nguyễn",  "email": "admin@anphat.com",   "role": "Quản trị viên", "password": "Admin123!"},
+    {"name": "Quản lý Trần",  "email": "quanly@anphat.com",  "role": "Quản lý kho",   "password": "Quanly123!"},
+    {"name": "Thủ kho Lê",    "email": "thukho@anphat.com",  "role": "Nhân viên kho", "password": "Thukho123!"},
+    {"name": "Viewer Phạm",   "email": "viewer@anphat.com",  "role": "Chỉ xem",       "password": "Viewer123!"},
 ]
 
 
 def _seed_rbac_users(session: Session) -> None:
-    """Upsert 4 user demo RBAC – an toàn khi chạy nhiều lần."""
-    _ns = UUID("12345678-rbac-0000-demo-000000000000", version=4) if False else NAMESPACE_URL
+    """Upsert 4 user demo RBAC có mật khẩu – an toàn khi chạy nhiều lần."""
+    from app.core.auth import hash_password  # import cục bộ tránh vòng tròn
+
+    _ns = NAMESPACE_URL
     for u in _RBAC_USERS:
         uid = uuid5(_ns, f"rbac-user-{u['email']}")
+        pw_hash = hash_password(u["password"])
         stmt = (
             pg_insert(User)
-            .values(id=uid, name=u["name"], email=u["email"], role=u["role"], active=True)
+            .values(
+                id=uid,
+                name=u["name"],
+                email=u["email"],
+                role=u["role"],
+                active=True,
+                password_hash=pw_hash,
+            )
             .on_conflict_do_update(
                 index_elements=[User.id],
-                set_={"name": u["name"], "role": u["role"], "active": True},
+                set_={
+                    "name": u["name"],
+                    "role": u["role"],
+                    "active": True,
+                    "password_hash": pw_hash,
+                },
             )
         )
         session.execute(stmt)
-    print("Đã seed tài khoản RBAC demo; các tài khoản này chưa có mật khẩu và không thể đăng nhập.")
+        print(f"  ✓ {u['email']} ({u['role']}) – mật khẩu: {u['password']}")
+    print("Đã seed tài khoản RBAC demo với mật khẩu mặc định.")
 
 def main() -> None:
     now = datetime.now(timezone.utc)
