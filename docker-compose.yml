@@ -1,3 +1,15 @@
+# =============================================================================
+# docker-compose.yml  –  Development / Production stack
+# =============================================================================
+# Dùng cho môi trường dev và production đầy đủ (frontend + backend + postgres).
+#
+# Môi trường Staging (backend + postgres, không frontend, có seed):
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml up --build
+#
+# Biến môi trường: copy .env.example → .env rồi điền POSTGRES_PASSWORD và
+#   AUTH_SECRET_KEY trước khi chạy.
+# =============================================================================
+
 services:
   frontend:
     build:
@@ -23,6 +35,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-warehouse_db}
       POSTGRES_USER: ${POSTGRES_USER:-warehouse_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # UTF-8 encoding bắt buộc để lưu tiếng Việt đúng chuẩn
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
@@ -47,6 +61,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173}
       CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
+      # AUTH_SECRET_KEY: bắt buộc đặt trước khi deploy production
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-}
       AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
       SCANNER_SESSION_TTL_SECONDS: ${SCANNER_SESSION_TTL_SECONDS:-600}
@@ -59,4 +74,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Volume dữ liệu PostgreSQL cho development/production
   postgres_data:
+  # Volume dữ liệu PostgreSQL riêng cho staging (xem docker-compose.staging.yml)
+  # Khai báo ở đây để Docker biết volume tồn tại khi override file được merge
+  postgres_staging_data:

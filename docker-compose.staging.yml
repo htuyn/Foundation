@@ -1,0 +1,85 @@
+# docker-compose.staging.yml
+# =============================================================================
+# Override cho môi trường STAGING / test cục bộ.
+#
+# Dùng kèm file gốc:
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml up --build
+#
+# Điểm khác so với file gốc:
+#   1. Loại bỏ service `frontend` (staging test API backend thuần túy).
+#   2. PostgreSQL mount thêm 2 initdb scripts để:
+#        a) Chạy migration Alembic (qua entrypoint backend riêng)
+#        b) Seed 20 sản phẩm mẫu EAN-13 từ scripts/seed_products.sql
+#   3. Backend dùng entrypoint riêng: chạy alembic upgrade → seed → uvicorn
+#   4. Thêm biến APP_ENV=staging để code có thể phân biệt môi trường.
+# =============================================================================
+
+services:
+  # Ghi đè postgres: thêm volume mount cho initdb scripts
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-warehouse_db}
+      POSTGRES_USER: ${POSTGRES_USER:-warehouse_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # Đảm bảo PostgreSQL dùng encoding UTF-8 để lưu tiếng Việt
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      # Volume dữ liệu bền vững (tách riêng với production để tránh lẫn data)
+      - postgres_staging_data:/var/lib/postgresql/data
+      # Thư mục initdb: PostgreSQL tự chạy tất cả *.sql và *.sh trong này
+      # khi container được tạo lần đầu (thư mục data chưa tồn tại).
+      # Script seed_products.sql sẽ chạy SAU khi alembic tạo bảng (xem backend entrypoint).
+      - ./scripts/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-warehouse_user} -d ${POSTGRES_DB:-warehouse_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+
+  # Ghi đè backend: entrypoint staging chạy migration + seed trước uvicorn
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: staging
+      APP_NAME: ${APP_NAME:-Smart Warehouse API}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-warehouse_db}
+      POSTGRES_USER: ${POSTGRES_USER:-warehouse_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-staging-dev-secret-change-before-deploy}
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      SCANNER_SESSION_TTL_SECONDS: ${SCANNER_SESSION_TTL_SECONDS:-600}
+      SCANNER_QR_TTL_SECONDS: ${SCANNER_QR_TTL_SECONDS:-60}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    # Entrypoint staging: migrate → seed demo data → start server
+    # (thay thế CMD mặc định trong Dockerfile)
+    command: >
+      sh -c "
+        echo '[staging] Chờ PostgreSQL sẵn sàng...' &&
+        alembic upgrade head &&
+        echo '[staging] Migration hoàn tất.' &&
+        python -m app.seed_demo &&
+        echo '[staging] Seed demo hoàn tất. Khởi động uvicorn...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  # Frontend bị loại bỏ trong staging (chỉ test API)
+  frontend:
+    profiles:
+      - frontend
+
+volumes:
+  postgres_staging_data:
