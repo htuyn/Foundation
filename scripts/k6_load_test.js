@@ -45,26 +45,27 @@ const SUPPLIER_ID = __ENV.SUPPLIER_ID || "00000000-0000-0000-0000-000000000002";
 const WAREHOUSE_ID= __ENV.WAREHOUSE_ID|| "00000000-0000-0000-0000-000000000003"; // THAY bằng UUID thực
 
 // ─── Hàm tạo phiếu nhập kho ──────────────────────────────────────────────────
+// FIX: type phải là "Nhập kho" (không phải "PN"), lines thay items, unitCost thay unitPrice
 function createInboundDocument(vuId, iteration) {
   const idempotencyKey = `k6-vu${vuId}-iter${iteration}-${Date.now()}`;
   const payload = JSON.stringify({
-    type: "PN",
-    partner: `Nhà cung cấp VU${vuId}`,
-    supplierId: SUPPLIER_ID,
+    type:        "Nhập kho",             // FIX: đúng với CHECK CONSTRAINT trên DB
+    partner:     `Nhà cung cấp VU${vuId}`,
+    supplierId:  SUPPLIER_ID,
     warehouseId: WAREHOUSE_ID,
-    note: `K6 load test VU=${vuId} iter=${iteration}`,
-    items: [
+    note:        `K6 load test VU=${vuId} iter=${iteration}`,
+    lines: [                             // FIX: "lines" thay vì "items"
       {
         productId: PRODUCT_ID,
-        quantity: 1,
-        unitPrice: 10000,
+        quantity:  1,
+        unitCost:  10000,                // FIX: "unitCost" thay vì "unitPrice"
       },
     ],
   });
 
   const headers = {
-    "Content-Type": "application/json",
-    "X-User-ID": NHAN_VIEN_ID,
+    "Content-Type":    "application/json",
+    "X-User-Id":       NHAN_VIEN_ID,    // FIX: đúng case "X-User-Id" (khớp RBAC middleware)
     "Idempotency-Key": idempotencyKey,
   };
 
@@ -75,7 +76,7 @@ function createInboundDocument(vuId, iteration) {
 // ─── Hàm GET inventory (đọc tồn kho) ────────────────────────────────────────
 function getInventory() {
   const res = http.get(`${BASE_URL}/api/v1/inventory?pageSize=50`, {
-    headers: { "X-User-ID": NHAN_VIEN_ID },
+    headers: { "X-User-Id": NHAN_VIEN_ID },  // FIX: đúng case header
   });
   return res;
 }

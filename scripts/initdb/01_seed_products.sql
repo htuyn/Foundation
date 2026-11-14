@@ -1,0 +1,27 @@
+-- =============================================================================
+-- initdb/01_seed_products.sql
+-- =============================================================================
+-- File này được đặt trong /docker-entrypoint-initdb.d/ để PostgreSQL tự chạy
+-- khi container được khởi tạo lần đầu.
+--
+-- LƯU Ý: Script này chạy TRƯỚC khi backend entrypoint chạy alembic upgrade.
+-- Vì vậy file này CHỈ seed dữ liệu vào bảng đã tồn tại (do alembic tạo).
+-- Thứ tự thực tế:
+--   1. postgres container start
+--   2. initdb scripts chạy (file này) – nhưng bảng chưa có!
+--   3. backend container start → alembic upgrade head → tạo bảng
+--   4. backend chạy python -m app.seed_demo → seed data
+--
+-- KẾT LUẬN: initdb chạy quá sớm (trước alembic), nên dùng seed qua backend.
+-- File này được giữ lại như một tham chiếu schema SQL thuần,
+-- nhưng KHÔNG được dùng trực tiếp trong initdb pipeline.
+-- Seed thực sự được thực hiện bởi: python -m app.seed_demo (trong backend entrypoint)
+--
+-- Nếu bạn muốn dùng file SQL thuần (không qua alembic), hãy:
+--   1. Chạy alembic upgrade head thủ công trước
+--   2. Sau đó copy file này vào container và chạy: psql -f 01_seed_products.sql
+-- =============================================================================
+
+-- File này intentionally để trống để tránh lỗi "bảng chưa tồn tại".
+-- Xem scripts/seed_products.sql để có SQL seed đầy đủ.
+SELECT 'Staging initdb placeholder - seed thực hiện qua backend entrypoint' AS note;
