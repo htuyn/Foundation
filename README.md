@@ -66,11 +66,12 @@ Yêu cầu Docker Desktop đang chạy và Python 3.12+.
 
    Lệnh chạy tương tác, nhắc nhập email và mật khẩu – không lưu vào shell history.
 
-5. **Seed dữ liệu mẫu (sản phẩm, tồn kho, người dùng demo):**
+5. **Seed dữ liệu mẫu (sản phẩm, tồn kho, người dùng demo có mật khẩu sẵn):**
 
    ```powershell
-   docker compose exec backend python app/seed_demo.py
+   docker compose exec backend python -m app.seed_demo
    ```
+   *(Hoặc chỉ khởi tạo tài khoản RBAC: `docker compose exec backend python -m app.seed_rbac`)*
 
 6. **Truy cập:**
    - **Frontend**: http://localhost:5173 (proxy `/api/v1` và WebSocket tới backend)
@@ -161,16 +162,16 @@ python -m pytest -q -p no:asyncio
 
 ## 🌱 Dữ liệu mẫu (Seed Demo)
 
-Sau khi chạy `seed_demo.py`, 4 tài khoản demo RBAC được tạo sẵn:
+Sau khi chạy `python -m app.seed_demo` (hoặc `python -m app.seed_rbac`), các tài khoản demo RBAC được tạo sẵn và tự động băm mật khẩu scrypt để đăng nhập được ngay:
 
-| Vai trò | Tên | Email |
-|---|---|---|
-| Quản trị viên | Admin Nguyễn | `admin@anphat.com` |
-| Thủ kho | Quản lý Trần | `quanly@anphat.com` |
-| Nhân viên quét mã | Thủ kho Lê | `thukho@anphat.com` |
-| Chỉ xem | Viewer Phạm | `viewer@anphat.com` |
+| Vai trò (DB Role) | Tên | Email | Mật khẩu mặc định |
+|---|---|---|---|
+| Quản trị viên | Admin An Phát | `admin@anphat.com` | `Admin123!` |
+| Quản lý kho | Quản lý Trần / Storekeeper | `quanly@anphat.com` / `storekeeper@anphat.com` | `Quanly123!` / `Storekeeper123!` |
+| Nhân viên kho | Thủ kho Lê / Scanner | `thukho@anphat.com` / `scanner@anphat.com` | `Thukho123!` / `Scanner123!` |
+| Chỉ xem | Viewer An Phát | `viewer@anphat.com` | `Viewer123!` |
 
-> **Lưu ý**: Tài khoản seed demo không có password hash; cần đặt lại mật khẩu qua admin hoặc dùng tài khoản admin được tạo bằng `create_admin` để đăng nhập API mode.
+> **Lưu ý**: Các tài khoản trên đã được gán sẵn mật khẩu scrypt hợp lệ. Có thể đăng nhập trực tiếp qua `POST /api/v1/auth/login` để lấy JWT access token cho các bước kiểm thử API và đo tải k6 mà không cần qua `create_admin`.
 
 ---
 

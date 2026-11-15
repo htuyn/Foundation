@@ -203,8 +203,10 @@
 - **P05 acceptance chưa đóng:** các test không dùng IndexedDB thật/browser; chưa thực hiện offline multi-scan/reload/browser restart, migration rollback bằng trình duyệt, quota/eviction, multi-tab/crash hoặc reconnect/API/camera E2E. Không xác nhận dữ liệu qua reload/restart cho tới browser test. P02 chưa xác định test/staging API/DB; không kết nối runtime, không chạy migration.
 - Báo cáo: `docs/P05-offline-first-storage-queue.md`; chi tiết thao tác scanner: `docs/scanner-mobile.md`.
 
-## Hoàn thiện Staging Seed & K6 Load Testing (2026-11-14)
-- [x] Fix `seed_demo.py`: Cập nhật mật khẩu băm scrypt mặc định cho 4 tài khoản RBAC demo (`Admin123!`, `Quanly123!`, `Thukho123!`, `Viewer123!`).
+## Hoàn thiện Staging Seed & K6 Load Testing (2026-11-14 / 2026-11-15)
+- [x] Fix `seed_demo.py`: Cập nhật mật khẩu băm scrypt mặc định cho các tài khoản RBAC demo (`Admin123!`, `Viewer123!`, `Scanner123!`, `Storekeeper123!`, `Thukho123!`, `Quanly123!`), hỗ trợ cả 2 cách gọi module (`python -m app.seed_demo`) và file (`python app/seed_demo.py`), thêm cờ `--rbac-only`.
+- [x] Thêm `backend/app/seed_rbac.py`: Khởi tạo nhanh tài khoản RBAC độc lập.
+- [x] Fix `backend/app/core/rbac.py`: Tương thích cả vai trò theo check constraint DB lẫn alias roadmap SV4.
 - [x] Fix `scripts/k6_load_test.js`: Hỗ trợ Bearer access token qua biến môi trường `AUTH_TOKEN`, sửa đường dẫn endpoint `/api/v1/inventory`.
-- [x] Thêm `scripts/install_k6.sh`: Hỗ trợ cài đặt nhanh k6 trên Windows/Linux/macOS.
-- [x] Thêm `scripts/run_full_test.ps1`: Tự động hóa toàn bộ quy trình staging -> migration -> seed -> login -> KT1/KT2/KT3 -> k6.
+- [x] Thêm & cập nhật `scripts/install_k6.sh`, `scripts/install_k6.ps1`: Hỗ trợ cài đặt nhanh k6 trên Windows/Linux/macOS.
+- [x] Thêm `scripts/run_full_test.sh` & cập nhật `scripts/run_full_test.ps1`: Tự động hóa toàn bộ quy trình staging -> migration -> seed -> login -> KT1/KT2/KT3 -> k6, có fallback chạy k6 container bằng Docker.

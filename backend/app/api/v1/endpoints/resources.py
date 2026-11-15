@@ -468,6 +468,10 @@ def list_audit_logs(
             "id": str(item.id),
             "message": item.message,
             "actorName": item.actor_name,
+            "action": item.action,
+            "outcome": item.outcome,
+            "statusCode": item.status_code,
+            "details": item.details,
             "createdAt": item.created_at.isoformat(),
         }
         for item in rows

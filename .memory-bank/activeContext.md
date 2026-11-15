@@ -106,8 +106,9 @@ Sau thay đổi kiến trúc/tính năng/sửa lỗi, cập nhật tệp này c�
 - Kiểm tra P05: `npm run build` đạt; gate unit 11/11; scanner/routing source-contract 11/11. Chưa có browser IndexedDB harness nên offline multi-scan/reload/browser restart, migration thực tế, quota, multi-tab/crash và reconnect E2E chưa được chứng minh.
 - P02 blocker vẫn mở; không kết nối DB/API runtime. P05 implementation đã có nhưng acceptance chưa hoàn tất đến khi browser persistence test chạy trên môi trường được xác nhận.
 
-## SV4 Staging Seed & Automation (2026-11-14)
-- Sửa `seed_demo.py`: tự động gán password hash scrypt cho 4 tài khoản RBAC demo (`admin@anphat.com`, `quanly@anphat.com`, `thukho@anphat.com`, `viewer@anphat.com`), cho phép đăng nhập API test ngay sau khi seed mà không bị chặn bởi `create_admin`.
-- Sửa `scripts/k6_load_test.js`: chuyển từ header giả lập `X-User-Id` sang `Authorization: Bearer ${AUTH_TOKEN}` và cập nhật route `/api/v1/inventory`.
-- Bổ sung `scripts/run_full_test.ps1`: luồng kiểm thử tự động staging -> migration -> seed -> login -> KT1 (403) -> KT2 (idempotency 201/200/409) -> KT3 (audit log) -> k6 load test.
-- Bổ sung `scripts/install_k6.sh`: script cài đặt công cụ k6 trên các nền tảng (Windows/Ubuntu/Debian/macOS).
+## SV4 Staging Seed & Automation (2026-11-14 / 2026-11-15)
+- Sửa `seed_demo.py`: hỗ trợ chạy cả cú pháp module (`python -m app.seed_demo`) lẫn file path (`python app/seed_demo.py`) nhờ bổ sung sys.path resolution; upsert kiểm tra email và tự động gán password hash scrypt cho các tài khoản RBAC demo (`admin@anphat.com`: `Admin123!`, `viewer@anphat.com`: `Viewer123!`, `scanner@anphat.com`: `Scanner123!`, `storekeeper@anphat.com`: `Storekeeper123!`, cùng `thukho@anphat.com`: `Thukho123!`, `quanly@anphat.com`: `Quanly123!`), giải quyết triệt để lỗi 401 INVALID_CREDENTIALS.
+- Bổ sung `seed_rbac.py` và cờ `--rbac-only` cho phép khởi tạo nhanh tài khoản RBAC độc lập mà không cần re-seed toàn bộ 1.000 sản phẩm.
+- Sửa `rbac.py`: đồng bộ danh sách role hợp lệ giữa DB constraint (`Quản trị viên`, `Quản lý kho`, `Nhân viên kho`, `Chỉ xem`) và alias SV4 roadmap (`Thủ kho`, `Nhân viên quét mã`), ngăn chặn 403 authorization sai lệch.
+- Sửa `scripts/run_full_test.ps1` & bổ sung `scripts/run_full_test.sh`: tự động hóa quy trình staging -> migration -> seed -> login -> KT1 -> KT2 -> KT3 -> k6, có fallback chạy k6 container qua Docker khi máy host chưa cài k6 binary.
+- Cập nhật `scripts/install_k6.sh` & bổ sung `scripts/install_k6.ps1`: hỗ trợ cài đặt k6 trên Windows (winget/choco) và Linux (apt/curl GPG key/snap/docker).

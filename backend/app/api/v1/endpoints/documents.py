@@ -4,9 +4,11 @@ import json
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.errors import ApiError
 from app.core.rbac import CurrentUser, require_permission
@@ -92,11 +94,11 @@ def create_document(
                     actor_name=user.name,
                     action="POST /api/v1/documents",
                     outcome="replayed",
-                    status_code=prior_request.response_status,
+                    status_code=200,
                     details={"documentId": prior_request.response_json.get("id")},
                 )
             )
-            return prior_request.response_json
+            return JSONResponse(status_code=200, content=prior_request.response_json)
 
     if payload.scanEventId is not None:
         existing_scan_document = db.scalar(
@@ -120,6 +122,8 @@ def create_document(
             replayed_document = document_dict(existing_scan_document)
             if idempotency_key:
                 prior_request.response_json = replayed_document
+                flag_modified(prior_request, "response_json")
+                db.add(prior_request)
             return replayed_document
 
     warehouse = db.get(Warehouse, payload.warehouseId)
@@ -182,6 +186,8 @@ def create_document(
     result = document_dict(document)
     if idempotency_key:
         prior_request.response_json = result
+        flag_modified(prior_request, "response_json")
+        db.add(prior_request)
     return result
 
 

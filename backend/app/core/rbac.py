@@ -43,18 +43,24 @@ from app.models import AuditLog, AuthSession, User
 _PUBLIC_PREFIXES = ("/health", "/api/v1/scanner")
 
 # ---------------------------------------------------------------------------
-# Hằng số tên vai trò – khớp 1-1 với CHECK CONSTRAINT trong bảng users
+# Hằng số tên vai trò – tương thích cả CHECK CONSTRAINT trong DB và SV4 alias
+# DB Constraint: 'Quản trị viên', 'Quản lý kho', 'Nhân viên kho', 'Chỉ xem'
+# SV4 Roadmap alias: 'Thủ kho', 'Nhân viên quét mã'
 # ---------------------------------------------------------------------------
-ROLE_ADMIN       = "Quản trị viên"      # admin
-ROLE_STOREKEEPER = "Thủ kho"            # storekeeper
-ROLE_SCANNER     = "Nhân viên quét mã"  # scanner
-ROLE_VIEWER      = "Chỉ xem"            # viewer
+ROLE_ADMIN           = "Quản trị viên"      # admin
+ROLE_STOREKEEPER     = "Quản lý kho"        # storekeeper (chuẩn DB)
+ROLE_STOREKEEPER_ALT = "Thủ kho"            # storekeeper (alias)
+ROLE_SCANNER         = "Nhân viên kho"      # scanner (chuẩn DB)
+ROLE_SCANNER_ALT     = "Nhân viên quét mã"  # scanner (alias)
+ROLE_VIEWER          = "Chỉ xem"            # viewer
 
 # Tập hợp tất cả vai trò hợp lệ được hệ thống nhận biết
 VALID_ROLES: frozenset[str] = frozenset({
     ROLE_ADMIN,
     ROLE_STOREKEEPER,
+    ROLE_STOREKEEPER_ALT,
     ROLE_SCANNER,
+    ROLE_SCANNER_ALT,
     ROLE_VIEWER,
 })
 
@@ -62,11 +68,21 @@ VALID_ROLES: frozenset[str] = frozenset({
 # Ma trận phân quyền theo HTTP method
 # ---------------------------------------------------------------------------
 # GET / HEAD / OPTIONS : tất cả vai trò (kể cả Chỉ xem)
-# POST / PUT / PATCH   : Admin, Thủ kho, Nhân viên quét mã
-# DELETE               : Admin, Thủ kho
-_ROLES_READ_ONLY = frozenset({ROLE_ADMIN, ROLE_STOREKEEPER, ROLE_SCANNER, ROLE_VIEWER})
-_ROLES_WRITE     = frozenset({ROLE_ADMIN, ROLE_STOREKEEPER, ROLE_SCANNER})
-_ROLES_DELETE    = frozenset({ROLE_ADMIN, ROLE_STOREKEEPER})
+# POST / PUT / PATCH   : Admin, Quản lý kho, Thủ kho, Nhân viên kho, Nhân viên quét mã
+# DELETE               : Admin, Quản lý kho, Thủ kho
+_ROLES_READ_ONLY = VALID_ROLES
+_ROLES_WRITE     = frozenset({
+    ROLE_ADMIN,
+    ROLE_STOREKEEPER,
+    ROLE_STOREKEEPER_ALT,
+    ROLE_SCANNER,
+    ROLE_SCANNER_ALT,
+})
+_ROLES_DELETE    = frozenset({
+    ROLE_ADMIN,
+    ROLE_STOREKEEPER,
+    ROLE_STOREKEEPER_ALT,
+})
 
 # HTTP methods gây thay đổi dữ liệu – viewer bị chặn tất cả các method này
 MUTATING_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})

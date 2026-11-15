@@ -2,7 +2,14 @@
 # run_full_test.ps1 - Full test flow: staging -> seed -> login -> k6
 # Run from project root: .\scripts\run_full_test.ps1
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+# NOTE: ErrorActionPreference = Continue cho phép Docker và external tools
+# ghi stderr (progress/info) mà không bị PowerShell ngắt nhầm là lỗi.
+# Mỗi bước dùng $LASTEXITCODE để kiểm tra lỗi thực sự.
+$ErrorActionPreference = "Continue"
+
+# Force UTF-8 console output / HTTP body encoding
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding            = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
@@ -12,10 +19,53 @@ function Write-Ok   { param($m) Write-Host "    OK: $m" -ForegroundColor Green }
 function Write-Warn { param($m) Write-Host "    WARN: $m" -ForegroundColor Yellow }
 function Fail       { param($m) Write-Host "    FAIL: $m" -ForegroundColor Red; exit 1 }
 
-# Vietnamese strings built with [char] codes to avoid encoding issues
-$NhapKho  = 'Nh' + [char]0x1EAD + 'p kho'    # "Nhap kho"  = Nhap kho
-$NccTest  = 'NCC Test KT2'
-$NccKhac  = 'NCC KHAC'
+# ── Hàm tiện ích: gửi HTTP POST với body UTF-8, trả về hashtable { StatusCode, Body, Error } ──
+# Dùng Invoke-WebRequest với body là byte[] UTF-8 để tránh PowerShell 5.1
+# tự re-encode ký tự Unicode (tiếng Việt) sang default charset.
+# Authorization header được đưa vào -Headers hashtable bình thường (không bị .NET chặn).
+# Mọi HTTP status (kể cả 4xx/5xx) đều được return dưới dạng { StatusCode, Body, Error }
+# chứ không ném exception, để caller tự so sánh code.
+function Invoke-Utf8Post {
+    param(
+        [string]$Uri,
+        [hashtable]$Headers,
+        [string]$JsonBody
+    )
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($JsonBody)
+    # Dùng Invoke-WebRequest (cmdlet) thay vì HttpWebRequest trực tiếp.
+    # Cmdlet xử lý Authorization header đúng cách qua -Headers parameter,
+    # và -Body nhận byte[] nên không bị re-encode ký tự Unicode.
+    try {
+        $resp = Invoke-WebRequest -Method Post -Uri $Uri `
+            -Headers $Headers `
+            -ContentType "application/json; charset=utf-8" `
+            -Body $bytes `
+            -UseBasicParsing `
+            -ErrorAction Stop
+        return @{ StatusCode = [int]$resp.StatusCode; Body = $resp.Content; Error = $null }
+    } catch {
+        $errResp = $_.Exception.Response
+        if ($errResp) {
+            $code = [int]$errResp.StatusCode
+            try {
+                $reader = [System.IO.StreamReader]::new($errResp.GetResponseStream())
+                $body   = $reader.ReadToEnd()
+                $reader.Close()
+            } catch { $body = "" }
+            return @{ StatusCode = $code; Body = $body; Error = $_ }
+        }
+        return @{ StatusCode = 0; Body = ""; Error = $_ }
+    }
+}
+
+# Vietnamese string constants
+# "Nhập kho": UTF-8 bytes 4E 68 E1 BA AD 70 20 6B 68 6F  (ậ = U+1EAD)
+# "Xuất kho": UTF-8 bytes 58 75 E1 BA A5 74 20 6B 68 6F  (ấ = U+1EA5)
+# Dùng [char] cast từ codepoint - an toàn với PowerShell 5.1+
+$NhapKho = 'Nh' + [char]0x1EAD + 'p kho'   # Nhập kho
+$XuatKho = 'Xu' + [char]0x1EA5 + 't kho'   # Xuất kho
+$NccTest = 'NCC Test KT2'
+$NccKhac = 'NCC KHAC'
 
 # ===========================================================================
 # STEP 0 - Check .env
@@ -32,7 +82,8 @@ Write-Ok ".env exists"
 # STEP 1 - Start Docker Compose
 # ===========================================================================
 Write-Step "STEP 1 - docker compose up"
-docker compose up -d --build
+# 2>&1 gộp stderr vào stdout để PowerShell không ngắt nhầm Docker progress là lỗi
+docker compose up -d --build 2>&1 | ForEach-Object { Write-Host $_ }
 if ($LASTEXITCODE -ne 0) { Fail "docker compose up failed" }
 Write-Ok "Compose started, waiting for backend /health/ready ..."
 
@@ -57,7 +108,7 @@ Write-Ok "Backend healthy"
 # STEP 2 - Alembic migration
 # ===========================================================================
 Write-Step "STEP 2 - alembic upgrade head"
-docker compose exec backend alembic upgrade head
+docker compose exec backend alembic upgrade head 2>&1 | ForEach-Object { Write-Host $_ }
 if ($LASTEXITCODE -ne 0) { Fail "alembic upgrade head failed" }
 Write-Ok "Migration applied"
 
@@ -65,7 +116,7 @@ Write-Ok "Migration applied"
 # STEP 3 - Seed demo data
 # ===========================================================================
 Write-Step "STEP 3 - python -m app.seed_demo"
-docker compose exec backend python -m app.seed_demo
+docker compose exec backend python -m app.seed_demo 2>&1 | ForEach-Object { Write-Host $_ }
 if ($LASTEXITCODE -ne 0) { Fail "seed_demo failed" }
 Write-Ok "Seed complete"
 
@@ -123,31 +174,18 @@ Write-Ok "SUPPLIER_ID  = $SUPPLIER_ID"
 # STEP 7 - KT1: RBAC 403 (viewer cannot POST /documents)
 # ===========================================================================
 Write-Step "STEP 7 - KT1: RBAC 403"
-$kt1Body = (@{
-    type        = $NhapKho
-    partner     = "Test KT1"
-    warehouseId = $WAREHOUSE_ID
-    supplierId  = $SUPPLIER_ID
-    note        = "KT1 RBAC test"
-    lines       = @(@{ productId = $PRODUCT_ID; quantity = 1; unitCost = 10000 })
-} | ConvertTo-Json -Depth 3)
 
-$viewerHdr = @{
-    "Authorization" = "Bearer $VIEWER_TOKEN"
-    "Content-Type"  = "application/json"
-}
-try {
-    Invoke-RestMethod -Method Post `
-        -Uri "http://localhost:8000/api/v1/documents" `
-        -Headers $viewerHdr -Body $kt1Body | Out-Null
-    Fail "KT1 FAILED - viewer should have received 403"
-} catch {
-    $code = $_.Exception.Response.StatusCode.value__
-    if ($code -eq 403) {
-        Write-Ok "KT1 PASS - viewer got 403 Forbidden"
-    } else {
-        Fail "KT1 FAILED - got HTTP $code instead of 403"
-    }
+$kt1Json = "{`"type`":`"$NhapKho`",`"partner`":`"Test KT1`",`"warehouseId`":`"$WAREHOUSE_ID`",`"supplierId`":`"$SUPPLIER_ID`",`"note`":`"KT1 RBAC test`",`"lines`":[{`"productId`":`"$PRODUCT_ID`",`"quantity`":1,`"unitCost`":10000}]}"
+$kt1Result = Invoke-Utf8Post -Uri "http://localhost:8000/api/v1/documents" `
+    -Headers @{ "Authorization" = "Bearer $VIEWER_TOKEN" } `
+    -JsonBody $kt1Json
+
+if ($kt1Result.StatusCode -eq 403) {
+    Write-Ok "KT1 PASS - viewer got 403 Forbidden"
+} elseif ($kt1Result.StatusCode -eq 0) {
+    Fail "KT1 FAILED - no response (network error): $($kt1Result.Error)"
+} else {
+    Fail "KT1 FAILED - got HTTP $($kt1Result.StatusCode) instead of 403"
 }
 
 # ===========================================================================
@@ -159,61 +197,37 @@ $thuKhoJson = '{"email":"thukho@anphat.com","password":"Thukho123!"}'
 $thuKhoResp = Invoke-RestMethod -Method Post -Uri $loginUri `
                                 -ContentType "application/json" -Body $thuKhoJson
 $THUKHO_TOKEN = $thuKhoResp.accessToken
-Write-Ok "thukho@anphat.com logged in"
+if (-not $THUKHO_TOKEN) { Fail "thukho token is null/empty - check login response" }
+Write-Ok "thukho@anphat.com logged in (token len=$($THUKHO_TOKEN.Length))"
 
 $IDEM_KEY = "kt2-$(Get-Date -Format 'yyyyMMddHHmmss')"
-$idemHdr  = @{
+$idemHdrDict = @{
     "Authorization"   = "Bearer $THUKHO_TOKEN"
-    "Content-Type"    = "application/json"
     "Idempotency-Key" = $IDEM_KEY
 }
-$idemBody = (@{
-    type        = $NhapKho
-    partner     = $NccTest
-    warehouseId = $WAREHOUSE_ID
-    supplierId  = $SUPPLIER_ID
-    note        = "KT2 idempotency lan 1"
-    lines       = @(@{ productId = $PRODUCT_ID; quantity = 10; unitCost = 50000 })
-} | ConvertTo-Json -Depth 3)
+Write-Host "    [DEBUG] Authorization header = 'Bearer $($THUKHO_TOKEN.Substring(0, [Math]::Min(20,$THUKHO_TOKEN.Length)))...'" -ForegroundColor DarkGray
+
+# Body gốc (round 1 & 2 dùng cùng body này)
+$idemBodyJson = "{`"type`":`"$NhapKho`",`"partner`":`"$NccTest`",`"warehouseId`":`"$WAREHOUSE_ID`",`"supplierId`":`"$SUPPLIER_ID`",`"note`":`"KT2 idempotency lan 1`",`"lines`":[{`"productId`":`"$PRODUCT_ID`",`"quantity`":10,`"unitCost`":50000}]}"
 
 # Round 1 -> 201
-try {
-    $r1 = Invoke-WebRequest -Method Post `
-        -Uri "http://localhost:8000/api/v1/documents" `
-        -Headers $idemHdr -Body $idemBody -UseBasicParsing
-    if ($r1.StatusCode -eq 201) { Write-Ok "KT2 round 1 -> 201 Created" }
-    else { Write-Warn "KT2 round 1 -> $($r1.StatusCode) (expected 201)" }
-} catch { Fail "KT2 round 1 error: $_" }
+$r1 = Invoke-Utf8Post -Uri "http://localhost:8000/api/v1/documents" `
+    -Headers $idemHdrDict -JsonBody $idemBodyJson
+if ($r1.StatusCode -eq 201) { Write-Ok "KT2 round 1 -> 201 Created" }
+else { Fail "KT2 round 1 FAILED - got HTTP $($r1.StatusCode) (expected 201). Body: $($r1.Body)" }
 
 # Round 2 (same key, same body) -> 200 replay
-try {
-    $r2 = Invoke-WebRequest -Method Post `
-        -Uri "http://localhost:8000/api/v1/documents" `
-        -Headers $idemHdr -Body $idemBody -UseBasicParsing
-    if ($r2.StatusCode -eq 200) { Write-Ok "KT2 round 2 -> 200 replay" }
-    else { Write-Warn "KT2 round 2 -> $($r2.StatusCode) (expected 200)" }
-} catch { Fail "KT2 round 2 error: $_" }
+$r2 = Invoke-Utf8Post -Uri "http://localhost:8000/api/v1/documents" `
+    -Headers $idemHdrDict -JsonBody $idemBodyJson
+if ($r2.StatusCode -eq 200) { Write-Ok "KT2 round 2 -> 200 replay" }
+else { Fail "KT2 round 2 FAILED - got HTTP $($r2.StatusCode) (expected 200). Body: $($r2.Body)" }
 
-# Round 3 (same key, different body) -> 409
-$idemBodyDiff = (@{
-    type        = $NhapKho
-    partner     = $NccKhac
-    warehouseId = $WAREHOUSE_ID
-    supplierId  = $SUPPLIER_ID
-    note        = "KT2 payload khac"
-    lines       = @(@{ productId = $PRODUCT_ID; quantity = 99; unitCost = 1 })
-} | ConvertTo-Json -Depth 3)
-
-try {
-    Invoke-RestMethod -Method Post `
-        -Uri "http://localhost:8000/api/v1/documents" `
-        -Headers $idemHdr -Body $idemBodyDiff | Out-Null
-    Fail "KT2 round 3 FAILED - should have received 409"
-} catch {
-    $code = $_.Exception.Response.StatusCode.value__
-    if ($code -eq 409) { Write-Ok "KT2 round 3 -> 409 Conflict" }
-    else { Fail "KT2 round 3 FAILED - got HTTP $code instead of 409" }
-}
+# Round 3 (same key, different body) -> 409 Conflict
+$idemBodyDiffJson = "{`"type`":`"$NhapKho`",`"partner`":`"$NccKhac`",`"warehouseId`":`"$WAREHOUSE_ID`",`"supplierId`":`"$SUPPLIER_ID`",`"note`":`"KT2 payload khac`",`"lines`":[{`"productId`":`"$PRODUCT_ID`",`"quantity`":99,`"unitCost`":1}]}"
+$r3 = Invoke-Utf8Post -Uri "http://localhost:8000/api/v1/documents" `
+    -Headers $idemHdrDict -JsonBody $idemBodyDiffJson
+if ($r3.StatusCode -eq 409) { Write-Ok "KT2 round 3 -> 409 Conflict" }
+else { Fail "KT2 round 3 FAILED - got HTTP $($r3.StatusCode) instead of 409. Error: $($r3.Error)" }
 
 # ===========================================================================
 # STEP 9 - KT3: Audit log has rejected entries
@@ -222,7 +236,7 @@ Write-Step "STEP 9 - KT3: Audit log"
 $auditResp = Invoke-RestMethod `
     -Uri "http://localhost:8000/api/v1/audit-logs?pageSize=50" `
     -Headers $authHdr
-$rejectedCount = ($auditResp | Where-Object { $_.outcome -eq "rejected" }).Count
+$rejectedCount = @($auditResp | Where-Object { $_.PSObject.Properties['outcome'] -and $_.outcome -eq "rejected" }).Count
 if ($rejectedCount -gt 0) {
     Write-Ok "KT3 PASS - $rejectedCount rejected audit log entries found"
 } else {
@@ -241,22 +255,43 @@ if (Get-Command k6 -ErrorAction SilentlyContinue) {
         -e "SUPPLIER_ID=$SUPPLIER_ID" `
         -e "AUTH_TOKEN=$THUKHO_TOKEN" `
         -e "BASE_URL=http://localhost:8000" `
-        scripts/k6_load_test.js
+        scripts/k6_load_test.js 2>&1 | ForEach-Object { Write-Host $_ }
     Write-Ok "k6 2-VU done"
 } else {
-    Write-Warn "k6 not installed. Run one of these first:"
-    Write-Host "    Windows : winget install k6 --source winget" -ForegroundColor Yellow
-    Write-Host "    Ubuntu  : sudo snap install k6" -ForegroundColor Yellow
-    Write-Host "    Script  : bash scripts/install_k6.sh" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "    Then run k6 manually:" -ForegroundColor Yellow
-    Write-Host ("    k6 run --vus 2 --duration 60s " +
-                "-e PRODUCT_ID=$PRODUCT_ID " +
-                "-e WAREHOUSE_ID=$WAREHOUSE_ID " +
-                "-e SUPPLIER_ID=$SUPPLIER_ID " +
-                "-e AUTH_TOKEN=$THUKHO_TOKEN " +
-                "-e BASE_URL=http://localhost:8000 " +
-                "scripts/k6_load_test.js") -ForegroundColor Yellow
+    Write-Warn "k6 chưa được cài trên host. Thử chạy k6 thông qua Docker container (grafana/k6)..."
+    $dockerRunSuccess = $false
+    try {
+        docker run --rm -v "${ProjectRoot}/scripts:/scripts" `
+            --add-host=host.docker.internal:host-gateway `
+            grafana/k6 run `
+            --vus 2 --duration 60s `
+            -e "PRODUCT_ID=$PRODUCT_ID" `
+            -e "WAREHOUSE_ID=$WAREHOUSE_ID" `
+            -e "SUPPLIER_ID=$SUPPLIER_ID" `
+            -e "AUTH_TOKEN=$THUKHO_TOKEN" `
+            -e "BASE_URL=http://host.docker.internal:8000" `
+            /scripts/k6_load_test.js
+        if ($LASTEXITCODE -eq 0) {
+            $dockerRunSuccess = $true
+            Write-Ok "k6 2-VU hoàn tất qua Docker container!"
+        }
+    } catch {}
+
+    if (-not $dockerRunSuccess) {
+        Write-Warn "Chưa thể chạy k6. Vui lòng cài đặt k6 theo một trong các cách sau:"
+        Write-Host "    PowerShell (Admin) : .\scripts\install_k6.ps1" -ForegroundColor Yellow
+        Write-Host "    Winget             : winget install k6 --source winget" -ForegroundColor Yellow
+        Write-Host "    Ubuntu/Bash        : bash scripts/install_k6.sh" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "    Sau khi cài, bạn có thể chạy k6 độc lập bằng lệnh:" -ForegroundColor Yellow
+        Write-Host ("    k6 run --vus 2 --duration 60s " +
+                    "-e PRODUCT_ID=$PRODUCT_ID " +
+                    "-e WAREHOUSE_ID=$WAREHOUSE_ID " +
+                    "-e SUPPLIER_ID=$SUPPLIER_ID " +
+                    "-e AUTH_TOKEN=$THUKHO_TOKEN " +
+                    "-e BASE_URL=http://localhost:8000 " +
+                    "scripts/k6_load_test.js") -ForegroundColor Yellow
+    }
 }
 
 # ===========================================================================

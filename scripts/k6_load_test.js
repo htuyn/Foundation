@@ -23,6 +23,9 @@ export const options = {
   vus: 2,
   duration: "60s",
 
+  // Yêu cầu k6 tính đủ các percentile cần báo cáo
+  summaryTrendStats: ["avg", "min", "med", "max", "p(50)", "p(90)", "p(95)", "p(99)"],
+
   thresholds: {
     // p95 phải < 500 ms ở 2 điểm quét
     "create_doc_latency_ms": ["p(95)<500"],
@@ -114,16 +117,23 @@ export default function () {
 
 // ─── Summary report ──────────────────────────────────────────────────────────
 export function handleSummary(data) {
-  const p50  = Math.round(data.metrics.create_doc_latency_ms?.values?.["p(50)"]  || 0);
-  const p95  = Math.round(data.metrics.create_doc_latency_ms?.values?.["p(95)"]  || 0);
-  const p99  = Math.round(data.metrics.create_doc_latency_ms?.values?.["p(99)"]  || 0);
+  // k6 lưu percentile trong values["p(50)"] – fallback sang med nếu không có (cần summaryTrendStats)
+  const metric = data.metrics.create_doc_latency_ms;
+  const vals   = metric?.values || {};
+  const p50  = Math.round(vals["p(50)"]  ?? vals["med"] ?? 0);
+  const p95  = Math.round(vals["p(95)"]  ?? 0);
+  const p99  = Math.round(vals["p(99)"]  ?? 0);
   const rps  = (data.metrics.http_reqs?.values?.rate || 0).toFixed(2);
   const errs = ((data.metrics.error_rate?.values?.rate || 0) * 100).toFixed(2);
 
+  // k6 handleSummary data không chứa data.options – lấy từ options export ở đầu file
+  const vus      = options.vus      || __ENV.K6_VUS      || "?";
+  const duration = options.duration || __ENV.K6_DURATION  || "?";
+
   const summary = `
 === SV4 K6 Load Test Summary ===
-VUs (điểm quét): ${data.options?.vus || "?"}
-Duration:        ${data.options?.duration || "?"}
+VUs (điểm quét): ${vus}
+Duration:        ${duration}
 
 Latency (create_doc):
   p50 = ${p50} ms
