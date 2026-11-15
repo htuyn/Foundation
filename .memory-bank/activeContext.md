@@ -105,3 +105,9 @@ Sau thay đổi kiến trúc/tính năng/sửa lỗi, cập nhật tệp này c�
 - Lifecycle bổ sung PAUSED_AUTH (đọc tương thích AUTH_REQUIRED), API `/health` probe timeout 5s, event online/offline/visibility, timeout requests 15s và poll 5s cho pending khi API chưa reachable; không dựa riêng navigator.onLine.
 - Kiểm tra P05: `npm run build` đạt; gate unit 11/11; scanner/routing source-contract 11/11. Chưa có browser IndexedDB harness nên offline multi-scan/reload/browser restart, migration thực tế, quota, multi-tab/crash và reconnect E2E chưa được chứng minh.
 - P02 blocker vẫn mở; không kết nối DB/API runtime. P05 implementation đã có nhưng acceptance chưa hoàn tất đến khi browser persistence test chạy trên môi trường được xác nhận.
+
+## SV4 Staging Seed & Automation (2026-11-14)
+- Sửa `seed_demo.py`: tự động gán password hash scrypt cho 4 tài khoản RBAC demo (`admin@anphat.com`, `quanly@anphat.com`, `thukho@anphat.com`, `viewer@anphat.com`), cho phép đăng nhập API test ngay sau khi seed mà không bị chặn bởi `create_admin`.
+- Sửa `scripts/k6_load_test.js`: chuyển từ header giả lập `X-User-Id` sang `Authorization: Bearer ${AUTH_TOKEN}` và cập nhật route `/api/v1/inventory`.
+- Bổ sung `scripts/run_full_test.ps1`: luồng kiểm thử tự động staging -> migration -> seed -> login -> KT1 (403) -> KT2 (idempotency 201/200/409) -> KT3 (audit log) -> k6 load test.
+- Bổ sung `scripts/install_k6.sh`: script cài đặt công cụ k6 trên các nền tảng (Windows/Ubuntu/Debian/macOS).

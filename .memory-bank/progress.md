@@ -202,3 +202,9 @@
 - Kiểm tra: `npm run build` đạt; `npm run test:gate-transactions` 11/11; `npm run test:vercel-routing` 11/11. Unit kiểm tra FIFO, migration record validation, no-sync khi connectivity false và sync sau reconnect giả lập.
 - **P05 acceptance chưa đóng:** các test không dùng IndexedDB thật/browser; chưa thực hiện offline multi-scan/reload/browser restart, migration rollback bằng trình duyệt, quota/eviction, multi-tab/crash hoặc reconnect/API/camera E2E. Không xác nhận dữ liệu qua reload/restart cho tới browser test. P02 chưa xác định test/staging API/DB; không kết nối runtime, không chạy migration.
 - Báo cáo: `docs/P05-offline-first-storage-queue.md`; chi tiết thao tác scanner: `docs/scanner-mobile.md`.
+
+## Hoàn thiện Staging Seed & K6 Load Testing (2026-11-14)
+- [x] Fix `seed_demo.py`: Cập nhật mật khẩu băm scrypt mặc định cho 4 tài khoản RBAC demo (`Admin123!`, `Quanly123!`, `Thukho123!`, `Viewer123!`).
+- [x] Fix `scripts/k6_load_test.js`: Hỗ trợ Bearer access token qua biến môi trường `AUTH_TOKEN`, sửa đường dẫn endpoint `/api/v1/inventory`.
+- [x] Thêm `scripts/install_k6.sh`: Hỗ trợ cài đặt nhanh k6 trên Windows/Linux/macOS.
+- [x] Thêm `scripts/run_full_test.ps1`: Tự động hóa toàn bộ quy trình staging -> migration -> seed -> login -> KT1/KT2/KT3 -> k6.
