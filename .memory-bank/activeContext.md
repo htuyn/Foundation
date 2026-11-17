@@ -1,6 +1,7 @@
 # Active Context
 
 ## Trạng thái hiện tại
+- Cập nhật 2026-11-17: hoàn thiện SV3-CV03 — diễn tập backup→restore trên staging Docker (14/14 bảng khớp, SHA-256 khớp host/container, dump lưu `backups/postgres/`, trình tự trong `scripts/staging_backup_evidence.sh`) và cấu hình lịch backup định kỳ (Task Scheduler `Foundation Postgres Backup` hằng ngày 02:00 chạy `scripts/backup_scheduled.ps1`, exit 0, retention 30 ngày, log UTF-8). Giới hạn: chưa có PostgreSQL managed URI nên chưa diễn tập restore managed; lịch chỉ chạy khi Docker Desktop hoạt động.
 - Đang duy trì ứng dụng quản lý kho React/Vite + FastAPI/PostgreSQL.
 - Cập nhật lần này: khắc phục validation scanner gate khi dữ liệu đầu vào thiếu hoặc kiểu không phải string (barcode, warehouseId, partner, supplierId, userId), tránh TypeError và giữ thông báo nghiệp vụ rõ ràng thay vì lỗi runtime không kiểm soát.
 - Tích hợp CRUD, phiếu, tồn, audit, scanner API và xác thực/RBAC phía backend hiện đã có trong source. Xem `docs/integration-audit.md` để biết kết quả kiểm chứng và các mismatch còn tồn tại.
