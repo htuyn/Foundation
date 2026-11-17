@@ -3,6 +3,7 @@
 
 ## Đã triển khai (theo source và tài liệu hiện có)
 - Frontend quản lý dashboard, sản phẩm, kho, danh mục, nhà cung cấp, tồn, phiếu, giao dịch, báo cáo, audit và scanner.
+- Đã khắc phục validation gate scanner để xử lý dữ liệu rỗng hoặc kiểu sai (barcode / warehouseId / partner / supplierId / userId) mà không ném TypeError; test gate transactions đã được bổ sung cho các trường hợp này.
 - Chế độ demo seed/localStorage và API mode FastAPI/PostgreSQL.
 - Backend CRUD và nghiệp vụ tồn/phiếu, migration Alembic, API scanner REST/WebSocket.
 - Tài liệu API, schema DB, mapping frontend-backend, scanner mobile và audit tích hợp trong `docs/`.

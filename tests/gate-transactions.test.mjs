@@ -55,6 +55,11 @@ test('validation từ chối quantity, gate/type, user, barcode và timestamp sa
   assert.throws(() => validateNewGateTransaction(validInbound({ barcode: 'x'.repeat(161) })), /Barcode/)
   assert.throws(() => validateNewGateTransaction(validInbound({ clientTimestamp: '2026-11-12T09:15:00' })), /timezone/)
   assert.throws(() => validateNewGateTransaction(validInbound({ supplierId: undefined })), /nhà cung cấp/)
+  assert.throws(() => validateNewGateTransaction(validInbound({
+    type: 'Xuất kho', scanPoint: 'GATE_B', supplierId: undefined, partner: undefined,
+  })), /người nhận/)
+  assert.throws(() => validateNewGateTransaction(validInbound({ warehouseId: '   ' })), /chọn kho/)
+  assert.throws(() => validateNewGateTransaction(validInbound({ barcode: undefined })), /Barcode/)
   assert.throws(() => validateNewGateTransaction(validInbound({ scanEventId: 'not-a-uuid' })), /scanEventId/)
 })
 
