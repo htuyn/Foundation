@@ -21,6 +21,7 @@ services:
       VITE_DEV_API_TARGET: http://backend:8000
       DEV_HTTPS_CERT_FILE: ${DEV_HTTPS_CERT_FILE_DOCKER:-}
       DEV_HTTPS_KEY_FILE: ${DEV_HTTPS_KEY_FILE_DOCKER:-}
+      RUNNING_IN_DOCKER: "true"
     ports:
       - "5173:5173"
     volumes:
