@@ -117,7 +117,9 @@ def test_pagination_limits_are_published_in_openapi() -> None:
 
 
 def test_document_idempotency_and_audit_schema_constraints() -> None:
-    assert IdempotencyRequest.__table__.primary_key.columns.keys() == ["idempotency_key"]
+    assert set(IdempotencyRequest.__table__.primary_key.columns.keys()) == {"user_id", "idempotency_key"}
+    foreign_keys = list(IdempotencyRequest.__table__.foreign_keys)
+    assert any(fk.column.table.name == "users" and fk.column.name == "id" for fk in foreign_keys)
     assert StockDocument.__table__.c.code.unique is True
     assert {"action", "outcome", "status_code", "details"}.issubset(AuditLog.__table__.c.keys())
 
