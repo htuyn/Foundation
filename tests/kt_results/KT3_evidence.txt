@@ -6,7 +6,7 @@ KT3 - Kiểm thử phân quyền RBAC (Chỉ xem → 403)
 ✅ Login OK | Vai trò: Chỉ xem
 
 📤 Thử tạo phiếu nhập bằng tài khoản Chỉ xem...
-   HTTP 403 | 2026-11-23 16:31:11
+   HTTP 403 | 2026-11-23 21:44:31
    Response: {
   "error": {
     "code": "FORBIDDEN",
@@ -24,14 +24,14 @@ KT3 - Kiểm thử phân quyền RBAC (Chỉ xem → 403)
 ✅ Login OK | Vai trò: Quản trị viên
 
 📤 Thử tạo phiếu nhập bằng tài khoản Admin (phải thành công)...
-   HTTP 201 | 2026-11-23 16:31:15
+   HTTP 201 | 2026-11-23 21:44:35
 
 --- Kết quả KT3b ---
-✅ KT3b PASS - Admin tạo phiếu thành công: PN-2026-5363
+✅ KT3b PASS - Admin tạo phiếu thành công: PN-2026-5377
 
 =======================================================
 ✅ KT3 PASS HOÀN TOÀN!
    Viewer → HTTP 403 FORBIDDEN ✅
    Admin  → HTTP 201 Created   ✅
-⏰ Thời gian: 2026-11-23 16:31:07
+⏰ Thời gian: 2026-11-23 21:44:27
 

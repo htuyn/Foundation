@@ -105,42 +105,68 @@ Mở http://localhost:5173 → vào mục **Phiếu kho** → tìm mã phiếu `
 
 ## 🟢 PHẦN 3 – Demo KT2: Chống ghi trùng Idempotency (~4 phút)
 
-**Mục tiêu chứng minh:** Gửi cùng 1 `Idempotency-Key` hai lần → tồn kho không thay đổi, hệ thống trả về đúng kết quả.
+**Mục tiêu chứng minh:** Gửi cùng 1 `Idempotency-Key` nhiều lần – kể cả **đồng thời** – tồn kho không thay đổi, hệ thống trả về đúng kết quả.
 
-### Bước 1: Chạy script KT2
+### Bước 1: Chạy script KT2 (có 2 kịch bản)
 
 ```powershell
+# Chạy đầy đủ cả 2 kịch bản (khuyến nghị khi bảo vệ)
 python -X utf8 scripts\kt2_duplicate_key.py
+
+# Chỉ demo đồng thời (gọn hơn nếu Hội đồng hỏi về race condition)
+python -X utf8 scripts\kt2_duplicate_key.py --con
 ```
 
-Hội đồng sẽ thấy:
+Hội đồng sẽ thấy **2 kịch bản**:
 
 ```
-🔑 Idempotency-Key: bdeaf55f-0b87-451b-abca-634342f129e0
-   (Cùng key này gửi 2 lần để kiểm tra)
+════════════════════════════════════════════════════
+📌 KỊCH BẢN A – GỬI TUẦN TỰ (lần 1 xong → lần 2)
+════════════════════════════════════════════════════
+🔑 Idempotency-Key: cb266faa-2630-4fc6-9805-c354e5ea4646
 
-📊 Tồn kho TRƯỚC khi test: 278
+📊 Tồn kho TRƯỚC: 278
 
-📤 Lần 1 - Gửi phiếu nhập...
-   HTTP 201 | ✅ Tạo phiếu: PN-2026-5359
+📤 Gửi lần 1 (tạo phiếu mới)...
+   ✅ Lần 1 | HTTP 201 | 2026-11-23 21:42:25.819
+      → Phiếu tạo mới: PN-2026-5372
 
-📤 Lần 2 - Gửi CÙNG key lần 2 (phải bị chặn)...
-   HTTP 200 | ✅ Hệ thống nhận ra trùng key!
+📤 Gửi lần 2 (cùng key – phải bị chặn)...
+   ✅ Lần 2 | HTTP 200 | 2026-11-23 21:42:27.900
+      → Replay phiếu cũ: PN-2026-5372
 
-📊 Tồn kho SAU khi test: 278   ← KHÔNG THAY ĐỔI
+📊 Tồn kho SAU: 278
+✅ KT2 PASS – Hệ thống chống ghi trùng hoạt động đúng!
 
-✅ KT2 PASS - Hệ thống chống ghi trùng hoạt động đúng!
+════════════════════════════════════════════════════
+⚡ KỊCH BẢN B – GỬI ĐỒNG THỜI (race condition test)
+   2 request bắn cùng lúc với CÙNG idempotency_key
+════════════════════════════════════════════════════
+🔑 Idempotency-Key: cdf7a510-eaf5-4ca0-9ed9-e2d564a1c10d
+
+📊 Tồn kho TRƯỚC: 278
+
+📤 Khởi động 2 thread... (cùng Barrier → bắn gần như đồng thời)
+   ✅ Thread-1 | HTTP 201 | 2026-11-23 21:42:34.152  ← cùng ms
+      → Phiếu tạo mới: PN-2026-5373
+   ✅ Thread-2 | HTTP 200 | 2026-11-23 21:42:34.152  ← cùng ms
+      → Replay phiếu cũ: PN-2026-5373
+
+📊 Tồn kho SAU: 278
+✅ KT2 PASS – 1 thread tạo phiếu, 1 thread bị chặn (đúng!)
 ```
+
+> 🔑 **Điểm đặc biệt của Kịch bản B:** Timestamp Thread-1 và Thread-2 khớp đến millisecond (`21:42:34.152`), chứng minh 2 request gửi **thực sự đồng thời** – nhưng hệ thống vẫn chặn đúng.
 
 ### Bước 2: Giải thích cơ chế – điểm quan trọng nhất!
 
 **Nói với Hội đồng:**
 
-> *"Lần gửi đầu tiên trả HTTP 201 Created – tạo phiếu thành công. Lần gửi thứ hai với cùng `Idempotency-Key` trả HTTP 200 – hệ thống nhận ra đây là request trùng và trả về kết quả của lần đầu, không ghi vào database lần nữa. Tồn kho vẫn là 278 – không bị nhân đôi. Đây là ràng buộc UNIQUE trên cột `idempotency_key` trong PostgreSQL, kết hợp với logic 'upsert' phía backend."*
+> *"Script dùng `threading.Barrier(2)` để bắt 2 request HTTP bắn đồng thời về server – mô phỏng tình huống thủ kho bấm đúp hoặc thiết bị retry cùng lúc. Lần đầu tiên trả 201 – tạo phiếu. Lần thứ hai trả 200 – replay kết quả cũ, không ghi vào DB thêm lần nào. Cơ chế: PostgreSQL advisory lock kết hợp UNIQUE constraint trên `(user_id, idempotency_key)` – dù 2 request đến cùng millisecond, chỉ 1 phiếu được tạo, tồn kho không đổi."*
 
 ### Bước 3: Nếu Hội đồng hỏi "tại sao cần điều này?"
 
-> *"Trong thực tế kho vận, thiết bị quét mã có thể bị mất kết nối giữa chừng và tự động thử lại (retry). Nếu không có cơ chế này, một lần quét mã vật lý có thể tạo ra 2–3 phiếu nhập trùng nhau, dẫn đến sai lệch tồn kho nghiêm trọng."*
+> *"Trong thực tế kho vận, thiết bị quét mã có thể bị mất kết nối giữa chừng và tự động thử lại (retry). Nếu không có cơ chế này, một lần quét mã vật lý có thể tạo ra 2–3 phiếu nhập trùng nhau, dẫn đến sai lệch tồn kho nghiêm trọng. Kịch bản B chứng minh hệ thống an toàn ngay cả trong trường hợp race condition thực tế."*
 
 ---
 

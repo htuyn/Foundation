@@ -2,81 +2,81 @@
   {
     "vus": 2,
     "duration": 30,
-    "total_requests": 104,
-    "rps": 3.39,
+    "total_requests": 106,
+    "rps": 3.44,
     "error_rate": 0.0,
-    "p50": 27.11,
-    "p90": 63.39,
-    "p95": 92.86,
-    "p99": 2036.98,
-    "write_p95": 62.15,
-    "read_p95": 93.6,
+    "p50": 28.41,
+    "p90": 62.97,
+    "p95": 87.33,
+    "p99": 1980.35,
+    "write_p95": 59.11,
+    "read_p95": 91.58,
     "status_breakdown": {
-      "201": 77,
-      "200": 27
+      "201": 75,
+      "200": 31
     },
-    "cpu_avg_pct": 8.2,
-    "cpu_max_pct": 15.8,
-    "mem_at_peak": "158.3MiB"
+    "cpu_avg_pct": 9.3,
+    "cpu_max_pct": 17.1,
+    "mem_at_peak": "196.7MiB"
   },
   {
     "vus": 4,
     "duration": 30,
-    "total_requests": 209,
-    "rps": 6.81,
+    "total_requests": 211,
+    "rps": 6.84,
     "error_rate": 0.0,
-    "p50": 28.47,
-    "p90": 84.87,
-    "p95": 95.24,
-    "p99": 2121.98,
-    "write_p95": 77.66,
-    "read_p95": 99.0,
+    "p50": 35.48,
+    "p90": 89.29,
+    "p95": 96.3,
+    "p99": 2114.76,
+    "write_p95": 91.61,
+    "read_p95": 101.4,
     "status_breakdown": {
-      "201": 145,
-      "200": 64
+      "201": 146,
+      "200": 65
     },
-    "cpu_avg_pct": 19.0,
-    "cpu_max_pct": 28.2,
-    "mem_at_peak": "157.1MiB"
+    "cpu_avg_pct": 19.5,
+    "cpu_max_pct": 24.9,
+    "mem_at_peak": "196.5MiB"
   },
   {
     "vus": 8,
     "duration": 30,
-    "total_requests": 408,
-    "rps": 13.31,
+    "total_requests": 406,
+    "rps": 13.13,
     "error_rate": 0.0,
-    "p50": 31.3,
-    "p90": 99.73,
-    "p95": 144.65,
-    "p99": 2279.84,
-    "write_p95": 141.48,
-    "read_p95": 141.57,
+    "p50": 48.44,
+    "p90": 106.96,
+    "p95": 129.19,
+    "p99": 2210.54,
+    "write_p95": 127.13,
+    "read_p95": 130.96,
     "status_breakdown": {
-      "201": 297,
-      "200": 111
+      "201": 287,
+      "200": 119
     },
-    "cpu_avg_pct": 33.7,
-    "cpu_max_pct": 49.5,
-    "mem_at_peak": "161.7MiB"
+    "cpu_avg_pct": 36.1,
+    "cpu_max_pct": 49.8,
+    "mem_at_peak": "197.2MiB"
   },
   {
     "vus": 16,
     "duration": 30,
-    "total_requests": 775,
-    "rps": 25.3,
+    "total_requests": 728,
+    "rps": 23.61,
     "error_rate": 0.0,
-    "p50": 61.98,
-    "p90": 170.99,
-    "p95": 240.57,
-    "p99": 2445.03,
-    "write_p95": 252.35,
-    "read_p95": 199.12,
+    "p50": 89.15,
+    "p90": 227.48,
+    "p95": 326.11,
+    "p99": 2398.8,
+    "write_p95": 358.09,
+    "read_p95": 240.46,
     "status_breakdown": {
-      "200": 229,
-      "201": 546
+      "201": 524,
+      "200": 204
     },
-    "cpu_avg_pct": 68.0,
-    "cpu_max_pct": 91.1,
-    "mem_at_peak": "167.4MiB"
+    "cpu_avg_pct": 66.5,
+    "cpu_max_pct": 89.3,
+    "mem_at_peak": "197.1MiB"
   }
 ]
