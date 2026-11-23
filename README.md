@@ -458,16 +458,20 @@ k6 run --vus 8  --duration 60s scripts/k6_load_test.js
 k6 run --vus 16 --duration 60s scripts/k6_load_test.js
 ```
 
-### Bảng ước lượng hiệu năng (ngoại suy từ 2 VU baseline)
+### Bảng hiệu năng thực đo (load_test_runner.py – 13/11/2026)
 
-| Điểm quét (VU) | Latency P95 ước tính (ms) | Throughput (req/s) | CPU ước tính (%) | RAM ước tính (MB) |
-|:--------------:|:-------------------------:|:------------------:|:----------------:|:-----------------:|
-| 2 *(baseline)* | **~120** *(đo thực tế)*   | ~1.4               | ~15%             | ~180              |
-| 4              | ~175                      | ~2.6               | ~25%             | ~210              |
-| 8              | ~270                      | ~4.8               | ~42%             | ~260              |
-| 16             | ~430                      | ~8.5               | ~70%             | ~350              |
+> Số liệu thực đo tại staging local (FastAPI Uvicorn + PostgreSQL container). Nguồn: [`docs/evidence/MC03_Do_Tai_Mo_Rong.md`](docs/evidence/MC03_Do_Tai_Mo_Rong.md).
 
-> **Điền số đo thực tế** vào cột "Latency P95 ước tính" sau khi chạy k6 trên staging. Kết quả lưu tại [`docs/evidence/MC03_Do_Tai_Mo_Rong.md`](docs/evidence/MC03_Do_Tai_Mo_Rong.md).
+| Điểm quét (VU) | Throughput (req/s) | Latency P50 (ms) | Latency P95 (ms) | Latency P99 (ms) | CPU avg (%) | RAM đỉnh (MiB) | Tỷ lệ lỗi |
+|:--------------:|:------------------:|:----------------:|:----------------:|:----------------:|:-----------:|:--------------:|:---------:|
+| **2** *(baseline)* | **3.14** | 46.69 | **199.83** | 2 183.81 | 19.1% | 80.11 | **0.0%** |
+| **4** | **6.07** | 78.66 | **233.48** | 2 212.55 | 36.9% | 82.70 | **0.0%** |
+| **8** | **10.00** | 159.25 | **634.67** | 2 536.71 | 69.2% | 90.41 | **0.0%** |
+| **16** | **14.37** | 438.92 | **1 376.99** | 3 289.49 | 95.5% | 97.52 | **0.0%** |
+| **24** *(ngoại suy)* | ~16–18 | — | ~2 000+ | — | ~100% | ~105 | — |
+| **32** *(ngoại suy)* | ~18–20 | — | ~3 000+ | — | ~100% | ~110 | — |
+
+> **Nhận xét**: Hệ thống đáp ứng tốt tại ≤ 4 VU (p95 < 240ms, 0% lỗi). Từ 8 VU, CPU backend trở thành bottleneck (69–95%); RAM ổn định, chỉ tăng 17 MiB qua toàn dải tải.
 
 ### Công thức ngoại suy
 
