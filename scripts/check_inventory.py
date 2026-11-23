@@ -6,7 +6,27 @@ import sys
 import requests
 
 BASE = "http://localhost:8000/api/v1"
-HEADERS = {"X-User-ID": "36a45099-c617-5970-9e62-356c301a16bb"}
+
+# ── Tự login để lấy Bearer token ────────────────────────────────────────────
+def _get_token():
+    resp = requests.post(
+        f"{BASE}/auth/login",
+        json={"email": "admin@anphat.com", "password": "Admin123!"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    token = resp.json().get("accessToken")
+    if not token:
+        raise RuntimeError("Login OK nhưng không có accessToken trong response")
+    return token
+
+try:
+    _TOKEN = _get_token()
+    HEADERS = {"Authorization": f"Bearer {_TOKEN}"}
+    print("🔑 Login OK – sử dụng Bearer token")
+except Exception as e:
+    print(f"⚠️  Không login được ({e}), thử dùng X-User-ID fallback")
+    HEADERS = {"X-User-ID": "29981161-8d43-5ddf-8ca8-021b2af4fa58"}
 
 
 def fetch_all(path, page_size=500, label=""):

@@ -22,36 +22,41 @@ from collections import Counter
 from datetime import datetime
 import requests
 
-NHAN_VIEN_ID = "36a45099-c617-5970-9e62-356c301a16bb"
+NHAN_VIEN_ID = "29981161-8d43-5ddf-8ca8-021b2af4fa58"   # admin fallback
 BACKEND_CONTAINER = "foundation-backend-1"
 
 # Credentials để login lấy Bearer token
-NHAN_VIEN_EMAIL    = "thukho@anphat.com"
-NHAN_VIEN_PASSWORD = "Demo@1234"
+# Thử nhiều tài khoản theo thứ tự ưu tiên
+_LOGIN_CANDIDATES = [
+    ("admin@anphat.com",   "Admin123!"),
+    ("thukho@anphat.com",  "Demo@1234"),
+    ("staff@anphat.com",   "Demo@1234"),
+]
 _bearer_token: str = ""
 
 
 def get_auth_headers() -> dict:
-    """Đăng nhập một lần, trả về header Authorization dùng cho toàn bộ load test."""
+    """Thử đăng nhập theo danh sách candidates, trả về header Authorization."""
     global _bearer_token
     if _bearer_token:
         return {"Authorization": f"Bearer {_bearer_token}"}
-    try:
-        res = requests.post(
-            "http://localhost:8000/api/v1/auth/login",
-            json={"email": NHAN_VIEN_EMAIL, "password": NHAN_VIEN_PASSWORD},
-            timeout=10,
-        )
-        if res.status_code == 200:
-            _bearer_token = res.json().get("accessToken", "")
-            print(f"✔ Đăng nhập thành công ({NHAN_VIEN_EMAIL})")
-            return {"Authorization": f"Bearer {_bearer_token}"}
-        else:
-            print(f"⚠️ Đăng nhập thất bại ({res.status_code}), thử dùng X-User-ID fallback")
-            return {"X-User-ID": NHAN_VIEN_ID}
-    except Exception as e:
-        print(f"⚠️ Không login được: {e}, dùng X-User-ID fallback")
-        return {"X-User-ID": NHAN_VIEN_ID}
+    for email, password in _LOGIN_CANDIDATES:
+        try:
+            res = requests.post(
+                "http://localhost:8000/api/v1/auth/login",
+                json={"email": email, "password": password},
+                timeout=10,
+            )
+            if res.status_code == 200:
+                token = res.json().get("accessToken", "")
+                if token:
+                    _bearer_token = token
+                    print(f"✔ Đăng nhập thành công ({email})")
+                    return {"Authorization": f"Bearer {_bearer_token}"}
+        except Exception:
+            continue
+    print(f"⚠️ Tất cả tài khoản đều thất bại, dùng X-User-ID fallback")
+    return {"X-User-ID": NHAN_VIEN_ID}
 
 
 # ---------------------------------------------------------------------------
