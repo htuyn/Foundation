@@ -2,6 +2,14 @@
 # Progress
 
 ## Đã triển khai (theo source và tài liệu hiện có)
+- Khắc phục Idempotency Key user isolation (2026-11-22):
+  - Bảng `idempotency_requests` chuyển sang Primary Key dạng composite `(user_id, idempotency_key)`, FK `users(id)` ON DELETE CASCADE, có index `(user_id, created_at)`.
+  - Endpoint `POST /api/v1/documents` cô lập không gian khóa theo `user.id` của `CurrentUser`: INSERT, SELECT, row lock `with_for_update()`, replay và advisory transaction lock đều nằm trong scope `(user.id, idempotency_key)`.
+  - Hai người dùng khác nhau sử dụng cùng khóa được xử lý độc lập, tạo phiếu riêng biệt và không bao giờ đọc được dữ liệu của nhau.
+  - Cùng user gửi lại cùng key và payload nhận lại đúng response cũ (HTTP 200). Gửi khác payload trả HTTP 409 `IDEMPOTENCY_KEY_DUPLICATE`.
+  - An toàn khi gửi đồng thời (cùng user hoặc khác user). Bảo toàn toàn vẹn cơ chế chống trùng theo `scanEventId`.
+  - Migration Alembic `0010_idempotency_user_isolation` kế thừa `0009_scanner_tx_attr`: tự động backfill `user_id` từ `stock_documents` và `audit_logs`, kiểm tra an toàn dữ liệu lịch sử.
+  - Test suites: Backend pytest 50/50 passed, 8 integration tests PostgreSQL chạy thực tế với database local, frontend 28/28 tests passed.
 - Frontend quản lý dashboard, sản phẩm, kho, danh mục, nhà cung cấp, tồn, phiếu, giao dịch, báo cáo, audit và scanner.
 - Đã khắc phục validation gate scanner để xử lý dữ liệu rỗng hoặc kiểu sai (barcode / warehouseId / partner / supplierId / userId) mà không ném TypeError; test gate transactions đã được bổ sung cho các trường hợp này.
 - Chế độ demo seed/localStorage và API mode FastAPI/PostgreSQL.

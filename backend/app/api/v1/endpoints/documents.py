@@ -74,17 +74,29 @@ def create_document(
     request_hash = hashlib.sha256(request_json.encode("utf-8")).hexdigest()
     if idempotency_key:
         db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key)::bigint)"),
+            {"key": f"idempotency-{user.id}-{idempotency_key}"},
+        )
+        db.execute(
             pg_insert(IdempotencyRequest)
             .values(
+                user_id=user.id,
                 idempotency_key=idempotency_key,
                 request_hash=request_hash,
                 response_status=201,
                 response_json=None,
             )
-            .on_conflict_do_nothing(index_elements=[IdempotencyRequest.idempotency_key])
+            .on_conflict_do_nothing(index_elements=[IdempotencyRequest.user_id, IdempotencyRequest.idempotency_key])
         )
         db.flush()
-        prior_request = db.get(IdempotencyRequest, idempotency_key)
+        prior_request = db.scalar(
+            select(IdempotencyRequest)
+            .where(
+                IdempotencyRequest.user_id == user.id,
+                IdempotencyRequest.idempotency_key == idempotency_key,
+            )
+            .with_for_update()
+        )
         if prior_request.request_hash != request_hash:
             raise ApiError(409, "IDEMPOTENCY_KEY_DUPLICATE", "Idempotency-Key đã được dùng cho nội dung yêu cầu khác.")
         if prior_request.response_json is not None:

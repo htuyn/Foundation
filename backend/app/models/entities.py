@@ -214,11 +214,15 @@ class AuditLog(Base):
 class IdempotencyRequest(Base):
     __tablename__ = "idempotency_requests"
 
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     idempotency_key: Mapped[str] = mapped_column(String(255), primary_key=True)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     response_status: Mapped[int] = mapped_column(Integer, nullable=False)
     response_json: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (
+        Index("ix_idempotency_requests_user_created", "user_id", "created_at"),
+    )
 
 
 class ScannerSession(Base):
