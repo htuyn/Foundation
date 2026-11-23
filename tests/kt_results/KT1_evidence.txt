@@ -1,33 +1,33 @@
 ﻿🔑 Đang login...
-✅ Login OK | 2026-11-23 16:30:45
+✅ Login OK | 2026-11-23 21:43:59
 
 📦 Lấy danh sách nhà cung cấp...
 ✅ Nhà cung cấp: DEMO | Công ty cung ứng tổng hợp 001 | ID: 89fb1d6e-4bf7-5b0e-a1e3-b8614d507c56
 
 📊 Lấy tồn kho TRƯỚC khi tạo phiếu...
-   Tồn kho TRƯỚC: 25
+   Tồn kho TRƯỚC: 38
 
 📋 KT1 – Bước 1/3: Tạo phiếu nhập kho...
-   HTTP 201 ✅  |  Mã phiếu: PN-2026-5361  |  Trạng thái: Bản nháp  |  2026-11-23 16:30:52
+   HTTP 201 ✅  |  Mã phiếu: PN-2026-5374  |  Trạng thái: Bản nháp  |  2026-11-23 21:44:06
 
-📋 KT1 – Bước 2/3: Xác nhận phiếu PN-2026-5361...
-   HTTP 200 ✅  |  Trạng thái: Đã xác nhận  |  2026-11-23 16:30:54
+📋 KT1 – Bước 2/3: Xác nhận phiếu PN-2026-5374...
+   HTTP 200 ✅  |  Trạng thái: Đã xác nhận  |  2026-11-23 21:44:08
 
 📊 KT1 – Bước 3/3: Kiểm tra tồn kho SAU khi xác nhận...
-   Tồn kho SAU : 30
+   Tồn kho SAU : 43
 
 ======================================================
-✅ Kiểm tra tồn kho: 25 → 30 (Δ = +5, kỳ vọng +5)
+✅ Kiểm tra tồn kho: 38 → 43 (Δ = +5, kỳ vọng +5)
 
 ✅ KT1 PASS!
-   Mã phiếu  : PN-2026-5361
+   Mã phiếu  : PN-2026-5374
    Trạng thái: Đã xác nhận
-   Thời gian  : 2026-11-23 16:30:56
+   Thời gian  : 2026-11-23 21:44:10
 
 📄 Full response (phiếu đã xác nhận):
 {
-  "id": "84d617b3-fc50-47b8-b96e-a31a26dbf264",
-  "code": "PN-2026-5361",
+  "id": "39fba690-c770-4e7b-a9e7-b16ce4ff636c",
+  "code": "PN-2026-5374",
   "type": "Nhập kho",
   "warehouseId": "190d4565-f9dd-48fe-b209-0601c5ca1cdd",
   "scanPoint": null,
@@ -36,7 +36,7 @@
   "createdByUserId": "29981161-8d43-5ddf-8ca8-021b2af4fa58",
   "supplierId": "89fb1d6e-4bf7-5b0e-a1e3-b8614d507c56",
   "partner": "DEMO | Công ty cung ứng tổng hợp 001",
-  "createdAt": "2026-11-23T09:30:52.056481+00:00",
+  "createdAt": "2026-11-23T14:44:06.130665+00:00",
   "status": "Đã xác nhận",
   "note": "",
   "lines": [

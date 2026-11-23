@@ -1,25 +1,57 @@
 ﻿🔑 Đang login...
 ✅ Login OK
 
-🔑 Idempotency-Key: e5f279c6-68c6-4785-8015-67be2d9813db
-   (Cùng key này gửi 2 lần để kiểm tra)
 
-📊 Tồn kho TRƯỚC khi test: 278
+════════════════════════════════════════════════════
+📌 KỊCH BẢN A – GỬI TUẦN TỰ (lần 1 xong → lần 2)
+════════════════════════════════════════════════════
+🔑 Idempotency-Key: cb0a0dc0-3010-40a9-ad4a-46c85b3a8a3f
 
-📤 Lần 1 - Gửi phiếu nhập...
-   HTTP 201 | 2026-11-23 16:31:00
-   ✅ Tạo phiếu: PN-2026-5362
+📊 Tồn kho TRƯỚC: 278
 
-📤 Lần 2 - Gửi CÙNG key lần 2 (phải bị chặn)...
-   HTTP 200 | 2026-11-23 16:31:02
-   ✅ Hệ thống nhận ra trùng key!
-   duplicate flag: N/A
+📤 Gửi lần 1 (tạo phiếu mới)...
+   ✅ Lần 1 | HTTP 201 | 2026-11-23 21:44:14.795
+      → Phiếu tạo mới: PN-2026-5375
 
-📊 Tồn kho SAU khi test: 278
+📤 Gửi lần 2 (cùng key – phải bị chặn)...
+   ✅ Lần 2 | HTTP 200 | 2026-11-23 21:44:16.860
+      → Replay (duplicate=False): PN-2026-5375
 
-==================================================
-✅ KT2 PASS - Hệ thống chống ghi trùng hoạt động đúng!
-   Lần 1: HTTP 201 ✅
-   Lần 2: HTTP 200 ✅ (trùng key bị xử lý đúng)
-⏰ Thời gian: 2026-11-23 16:31:02
+📊 Tồn kho SAU: 278
+
+────────────────────────────────────────────────────
+📋 Kết luận [Tuần tự]
+   Lần 1 : HTTP 201
+   Lần 2 : HTTP 200
+   Tồn kho : 278 → 278
+   ✅ KT2 PASS – Hệ thống chống ghi trùng hoạt động đúng!
+
+════════════════════════════════════════════════════
+⚡ KỊCH BẢN B – GỬI ĐỒNG THỜI (race condition test)
+   2 request bắn cùng lúc với CÙNG idempotency_key
+════════════════════════════════════════════════════
+🔑 Idempotency-Key: 0ce1a935-b1cf-432f-83ce-9225b2edd99f
+   (cả 2 thread dùng chung key này)
+
+📊 Tồn kho TRƯỚC: 278
+
+📤 Khởi động 2 thread... (cùng Barrier → bắn gần như đồng thời)
+   ✅ Thread-1 | HTTP 201 | 2026-11-23 21:44:23.158
+      → Phiếu tạo mới: PN-2026-5376
+   ✅ Thread-2 | HTTP 200 | 2026-11-23 21:44:23.158
+      → Replay (duplicate=False): PN-2026-5376
+
+📊 Tồn kho SAU: 278
+
+────────────────────────────────────────────────────
+📋 Kết luận [Đồng thời]
+   Thread-1 : HTTP 201
+   Thread-2 : HTTP 200
+   Tồn kho  : 278 → 278
+   ✅ KT2 PASS – 1 thread tạo phiếu, 1 thread bị chặn (đúng!)
+
+════════════════════════════════════════════════════
+🏁 Hoàn thành KT2
+   📁 Lưu output này vào tests/kt_results/KT2_evidence.txt
+════════════════════════════════════════════════════
 
