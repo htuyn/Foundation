@@ -54,17 +54,25 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export function validateNewGateTransaction(input: NewGateTransaction) {
-  if (!UUID_PATTERN.test(input.scanEventId)) throw new Error('scanEventId phải là UUID hợp lệ.')
-  if (!input.barcode.trim() || input.barcode.trim().length > 160) throw new Error('Barcode phải có từ 1 đến 160 ký tự.')
+  const scanEventId = typeof input.scanEventId === 'string' ? input.scanEventId : ''
+  const barcode = typeof input.barcode === 'string' ? input.barcode.trim() : ''
+  const warehouseId = typeof input.warehouseId === 'string' ? input.warehouseId.trim() : ''
+  const userId = typeof input.userId === 'string' ? input.userId.trim() : ''
+  const clientTimestamp = typeof input.clientTimestamp === 'string' ? input.clientTimestamp : ''
+  const supplierId = typeof input.supplierId === 'string' ? input.supplierId.trim() : ''
+  const partner = typeof input.partner === 'string' ? input.partner.trim() : ''
+
+  if (!UUID_PATTERN.test(scanEventId)) throw new Error('scanEventId phải là UUID hợp lệ.')
+  if (!barcode || barcode.length > 160) throw new Error('Barcode phải có từ 1 đến 160 ký tự.')
   if (!Number.isInteger(input.quantity) || input.quantity < 1) throw new Error('Số lượng phải là số nguyên lớn hơn 0.')
   if ((input.scanPoint === 'GATE_A') !== (input.type === 'Nhập kho')) throw new Error('Điểm quét không khớp loại phiếu.')
-  if (!input.warehouseId.trim()) throw new Error('Hãy chọn kho trước khi quét.')
-  if (!UUID_V4_PATTERN.test(input.userId)) throw new Error('Không tìm thấy user ID hợp lệ đã xác thực.')
-  if (!Number.isFinite(Date.parse(input.clientTimestamp)) || !/(Z|[+-]\d{2}:\d{2})$/i.test(input.clientTimestamp)) {
+  if (!warehouseId) throw new Error('Hãy chọn kho trước khi quét.')
+  if (!UUID_V4_PATTERN.test(userId)) throw new Error('Không tìm thấy user ID hợp lệ đã xác thực.')
+  if (!Number.isFinite(Date.parse(clientTimestamp)) || !/(Z|[+-]\d{2}:\d{2})$/i.test(clientTimestamp)) {
     throw new Error('clientTimestamp phải là ISO 8601 có timezone.')
   }
-  if (input.type === 'Nhập kho' && !input.supplierId?.trim()) throw new Error('Hãy chọn nhà cung cấp.')
-  if (input.type === 'Xuất kho' && !input.partner.trim()) throw new Error('Hãy nhập người nhận hoặc mã đơn hàng.')
+  if (input.type === 'Nhập kho' && !supplierId) throw new Error('Hãy chọn nhà cung cấp.')
+  if (input.type === 'Xuất kho' && !partner) throw new Error('Hãy nhập người nhận hoặc mã đơn hàng.')
 }
 
 export function createGateTransaction(input: NewGateTransaction, randomUUID?: () => string) {
@@ -102,9 +110,10 @@ export function buildGateDocumentBody(transaction: GateTransaction, product: { i
   }
 }
 
-export async function persistBeforeSync<T>(transaction: T, persist: (transaction: T) => Promise<void>, sync: () => Promise<void>) {
-  await persist(transaction)
+export async function persistBeforeSync<T, R>(transaction: T, persist: (transaction: T) => Promise<R>, sync: () => Promise<void>): Promise<R> {
+  const result = await persist(transaction)
   await sync()
+  return result
 }
 
 export function isManualDoubleClick(lastAcceptedAt: number, now: number, windowMs = 500) {

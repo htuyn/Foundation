@@ -21,6 +21,7 @@ export default defineConfig(({ mode, command }) => {
       host: '0.0.0.0',
       port: 5173,
       strictPort: true,
+      allowedHosts: ['.trycloudflare.com'],
       ...(certificate && privateKey ? { https: { cert: readFileSync(certificate), key: readFileSync(privateKey) } } : {}),
       proxy: {
         '/api/v1': {

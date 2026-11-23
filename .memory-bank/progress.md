@@ -3,6 +3,7 @@
 
 ## Đã triển khai (theo source và tài liệu hiện có)
 - Frontend quản lý dashboard, sản phẩm, kho, danh mục, nhà cung cấp, tồn, phiếu, giao dịch, báo cáo, audit và scanner.
+- Đã khắc phục validation gate scanner để xử lý dữ liệu rỗng hoặc kiểu sai (barcode / warehouseId / partner / supplierId / userId) mà không ném TypeError; test gate transactions đã được bổ sung cho các trường hợp này.
 - Chế độ demo seed/localStorage và API mode FastAPI/PostgreSQL.
 - Backend CRUD và nghiệp vụ tồn/phiếu, migration Alembic, API scanner REST/WebSocket.
 - Tài liệu API, schema DB, mapping frontend-backend, scanner mobile và audit tích hợp trong `docs/`.
@@ -138,6 +139,7 @@
 - `npm run build`: đạt. `npm run test:vercel-routing`: 7 passed. `git diff --check`: đạt. Chưa E2E trên thiết bị điện thoại.
 
 ## Backend idempotency, Audit Log và backup (2026-10-29)
+
 - Thêm migration `0005_idempotency_audit`: bảng idempotency dùng `idempotency_key` làm khóa chính/UNIQUE, lưu hash payload và response gốc; Audit Log có action, outcome, HTTP status và JSON details.
 - `POST /api/v1/documents` hỗ trợ `Idempotency-Key` trong cùng transaction với tạo phiếu. Retry cùng payload trả response ban đầu; reuse key cho body khác trả 409 `IDEMPOTENCY_KEY_REUSED`. Mã phiếu đã có unique constraint; cơ chế advisory lock sinh mã tiếp tục được giữ.
 - Frontend API mode gửi khóa idempotency và giữ khóa cho lần retry cùng payload cho đến khi response và bootstrap refresh thành công.
@@ -210,3 +212,10 @@
 - [x] Fix `scripts/k6_load_test.js`: Hỗ trợ Bearer access token qua biến môi trường `AUTH_TOKEN`, sửa đường dẫn endpoint `/api/v1/inventory`.
 - [x] Thêm & cập nhật `scripts/install_k6.sh`, `scripts/install_k6.ps1`: Hỗ trợ cài đặt nhanh k6 trên Windows/Linux/macOS.
 - [x] Thêm `scripts/run_full_test.sh` & cập nhật `scripts/run_full_test.ps1`: Tự động hóa toàn bộ quy trình staging -> migration -> seed -> login -> KT1/KT2/KT3 -> k6, có fallback chạy k6 container bằng Docker.
+
+## SV3-CV03 hoàn thiện: restore staging + lịch backup định kỳ (2026-11-17)
+- [x] Diễn tập restore trên staging Docker: `backup_postgres.sh` tạo dump 775.182 byte + SHA-256 `b90202cd...`; `restore_postgres.sh` verify checksum rồi restore vào DB cô lập `warehouse_restore_validation_20261117_164916`; đối chiếu 14/14 bảng khớp số bản ghi; dump copy về host `backups/postgres/` và `Get-FileHash` khớp SHA-256. Trình tự đầy đủ trong `scripts/staging_backup_evidence.sh`.
+- [x] Lịch sao lưu định kỳ: tạo `scripts/backup_scheduled.ps1` (wrapper cho Task Scheduler: copy script vào container, chạy pg_dump + SHA-256, docker cp về host, verify checksum, retention 30 ngày, log `backups/postgres/backup.log`; mật khẩu không ra dòng lệnh host vì DATABASE_URL build bên trong container từ env sẵn có). Đăng ký Task Scheduler `Foundation Postgres Backup` chạy hằng ngày 02:00 (StartWhenAvailable, chạy được trên pin). Chạy thủ công trực tiếp đạt exit 0, dump về host + SHA-256 khớp; kết quả chạy qua scheduler được xác minh riêng (xem activeContext).
+- [x] Bổ sung `backups/`, `*.dump`, `*.sha256` vào `.gitignore` (dump chứa dữ liệu nghiệp vụ, không commit).
+- [x] Sửa encoding log: file `.ps1` UTF-8 **không BOM** khiến PowerShell 5.1 đọc literal tiếng Việt theo ANSI ("khớp" → "khá»›p"); đã chuyển `backup_scheduled.ps1` sang UTF-8 có BOM, log hiển thị đúng.
+- Giới hạn còn lại: lịch backup chạy trên staging Docker local; chưa có PostgreSQL managed (Neon/Render) URI nên chưa diễn tập restore trên managed thật. Windows Task Scheduler chỉ có hiệu lực khi máy user đăng nhập và Docker Desktop đang chạy.

@@ -15,6 +15,8 @@ const gateScannerSource = readProjectFile('../src/features/scanner/GateScannerDi
 const gateTransactionsSource = readProjectFile('../src/features/scanner/gateTransactions.ts')
 const gateTransactionCoreSource = readProjectFile('../src/features/scanner/gateTransactionCore.ts')
 const gateQueueStoreSource = readProjectFile('../src/features/scanner/gateQueueStore.ts')
+const offlineQueueSource = readProjectFile('../src/features/scanner/offlineQueueLocalStorage.ts')
+const scannerSimSource = readProjectFile('../scripts/scanner_sim.mjs')
 
 test('Vercel rewrites direct SPA requests to the Vite entry document', () => {
   assert.deepEqual(vercelConfig.rewrites, [
@@ -120,3 +122,112 @@ test('gate queue uses durable IndexedDB migration, FIFO lifecycle and API reacha
   assert.match(gateTransactionsSource, /checkApiConnectivity/)
   assert.match(gateTransactionsSource, /Date\.now\(\) \+ 5000/)
 })
+
+// ── SV2 CV01: Scanner sim packet contract ─────────────────────────────────────
+test('CV01: scanner_sim produces normalized packet with idempotency_key, client_timestamp and type IN/OUT', () => {
+  // idempotency_key phải là UUID v4 độc lập với scan_event_id
+  assert.match(scannerSimSource, /idempotency_key = forcedKey \?\? randomUUID\(\)/)
+  assert.match(scannerSimSource, /scan_event_id\s*=\s*randomUUID\(\)/)
+  assert.match(scannerSimSource, /client_timestamp = new Date\(\)\.toISOString\(\)/)
+  // Phân biệt client_timestamp (đồng hồ kho) vs server_timestamp (PostgreSQL)
+  assert.match(scannerSimSource, /client_timestamp.*giờ quét tại kho/is)
+  assert.match(scannerSimSource, /server_timestamp.*PostgreSQL/is)
+  // type IN/OUT được map sang backend Vietnamese
+  assert.match(scannerSimSource, /gateArg === 'A' \? 'IN' : 'OUT'/)
+  assert.match(scannerSimSource, /gateArg === 'A' \? 'Nhập kho' : 'Xuất kho'/)
+  // EAN-13 validation
+  assert.match(scannerSimSource, /ean13CheckDigit/)
+  assert.match(scannerSimSource, /validEan13/)
+  // Giữ nguyên idempotency_key khi retry
+  assert.match(scannerSimSource, /forcedKey.*retry/is)
+  // Idempotency-Key header bất biến
+  assert.match(scannerSimSource, /'Idempotency-Key': packet\.idempotency_key/)
+})
+
+// ── SV2 CV02: LocalStorage offline queue ─────────────────────────────────────
+test('CV02: LocalStorage offline queue has FIFO enqueue, exponential backoff and dead-letter routing', () => {
+  // FIFO enqueue
+  assert.match(offlineQueueSource, /queue\.push\(/)
+  assert.match(offlineQueueSource, /status: 'PENDING'/)
+  // Idempotency – không enqueue key đã tồn tại
+  assert.match(offlineQueueSource, /idempotency_key === packet\.idempotency_key/)
+  // Exponential backoff delays
+  assert.match(offlineQueueSource, /RETRY_DELAYS_MS = \[1000, 2000, 4000/)
+  // HTTP response handling: 2xx/409 → remove; 400/403 → dead-letter; 401 → paused; 5xx → retry
+  assert.match(offlineQueueSource, /status >= 200 && status < 300/)
+  assert.match(offlineQueueSource, /status === 409/)
+  assert.match(offlineQueueSource, /status === 400 \|\| status === 403/)
+  assert.match(offlineQueueSource, /DEAD_LETTER/)
+  assert.match(offlineQueueSource, /status === 401/)
+  assert.match(offlineQueueSource, /PAUSED_AUTH/)
+  // Capacity warning 80%
+  assert.match(offlineQueueSource, /CAPACITY_WARNING_RATIO\s*=\s*0\.8/)
+  assert.match(offlineQueueSource, /warningActive/)
+  // Export emergency backup
+  assert.match(offlineQueueSource, /exportQueueToJson/)
+  assert.match(offlineQueueSource, /exportQueueToCsv/)
+  assert.match(offlineQueueSource, /downloadQueueBackup/)
+  // online/offline events
+  assert.match(offlineQueueSource, /window\.addEventListener\('online'/)
+  assert.match(offlineQueueSource, /window\.addEventListener\('offline'/)
+  // Capacity table
+  assert.match(offlineQueueSource, /computeCapacityTable/)
+  assert.match(offlineQueueSource, /LOCAL_STORAGE_QUOTA_BYTES/)
+  assert.match(offlineQueueSource, /measureRecordSizeBytes/)
+})
+
+// ── SV2 CV02: Bảng dung lượng thực đo ────────────────────────────────────────
+test('CV02: capacity table documents UTF-16 storage limit and max offline scan count', () => {
+  // 5 MB quota được khai báo
+  assert.match(offlineQueueSource, /5 \* 1024 \* 1024/)
+  // UTF-16: 2 bytes per char được giải thích
+  assert.match(offlineQueueSource, /UTF-16/)
+  // Phép tính kích thước thực
+  assert.match(offlineQueueSource, /json\.length \* 2/)
+  // IndexedDB là hướng nâng cấp
+  assert.match(offlineQueueSource, /IndexedDB/)
+})
+
+// ── SV2 CV03: KT1 / KT2 artifacts ────────────────────────────────────────────
+test('CV03 KT1: gate scanner dialog has camera and manual EAN-13 input for real scan test', () => {
+  // Camera button (KT1 – quét thật bằng Camera)
+  assert.match(gateScannerSource, /Mở camera \(KT1\)/)
+  // Manual EAN-13 input với pattern
+  assert.match(gateScannerSource, /pattern="\[\\\\d\]\{13\}"/)
+  assert.match(gateScannerSource, /Nhập EAN-13 thủ công/)
+  // client_timestamp ghi nhận tại scan event
+  assert.match(gateScannerSource, /clientTimestamp: scannedAt/)
+  assert.match(gateScannerSource, /client_timestamp.*giờ kho/is)
+  // server_timestamp từ response
+  assert.match(gateScannerSource, /serverTimestamp.*server_timestamp/is)
+})
+
+test('CV03 KT2: double-submit guard blocks duplicate; idempotency_key unchanged on retry', () => {
+  // Double-click guard
+  assert.match(gateScannerSource, /isManualDoubleClick/)
+  assert.match(gateScannerSource, /enqueueBusy/)
+  // in-flight guard cho camera scan
+  assert.match(gateScannerSource, /inFlightEventsRef\.current\.has\(scanEventId\)/)
+  // Retry button giữ nguyên idempotencyKey
+  assert.match(gateScannerSource, /retryGateTransaction\(user\.id, item\.idempotencyKey\)/)
+  assert.match(gateTransactionCoreSource, /prepareGateTransactionRetry/)
+  assert.match(gateTransactionCoreSource, /status: 'PENDING'.*retryAt: undefined/is)
+})
+
+test('CV03: offline indicator, dead-letter panel and emergency export present in dialog', () => {
+  // Trạng thái offline hiển thị rõ
+  assert.match(gateScannerSource, /Mất kết nối mạng/)
+  assert.match(gateScannerSource, /isOnline/)
+  // Cảnh báo 80%
+  assert.match(gateScannerSource, /Cảnh báo dung lượng/)
+  // Xuất khẩn cấp
+  assert.match(gateScannerSource, /Xuất khẩn cấp \(\.json\)/)
+  assert.match(gateScannerSource, /downloadQueueBackup/)
+  // Dead-letter panel
+  assert.match(gateScannerSource, /Dead-Letter/)
+  assert.match(gateScannerSource, /loadDeadLetterItems/)
+  // Bảng dung lượng
+  assert.match(gateScannerSource, /computeCapacityTable/)
+  assert.match(gateScannerSource, /maxRecordsEstimate/)
+})
+

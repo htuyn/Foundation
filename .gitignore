@@ -18,3 +18,8 @@ venv/
 certs/*
 !certs/.gitkeep
 .neon
+
+# PostgreSQL backup dumps chứa dữ liệu nghiệp vụ – không commit
+backups/
+*.dump
+*.sha256

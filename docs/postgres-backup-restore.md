@@ -26,7 +26,14 @@ Mặc định script không xóa schema hoặc ghi đè object; hãy dùng datab
 
 ## Lịch sao lưu định kỳ
 
-Ví dụ cron chạy 02:00 UTC mỗi ngày (đặt biến môi trường an toàn qua secret manager hoặc file chỉ chủ sở hữu đọc được):
+Trên Windows đã cấu hình thật qua Task Scheduler (2026-11-17):
+
+- **Task**: `Foundation Postgres Backup` — chạy hằng ngày 02:00, `StartWhenAvailable` (chạy bù nếu máy tắt đúng giờ), chạy được khi dùng pin.
+- **Script**: `scripts/backup_scheduled.ps1` — wrapper không cần Git Bash: copy `backup_postgres.sh` vào container postgres, strip CRLF, chạy pg_dump với `DATABASE_URL` build **bên trong container** từ env sẵn có (mật khẩu không xuất hiện trên dòng lệnh host), `docker cp` dump + `.sha256` về `backups/postgres/`, xác minh SHA-256 trên host, retention 30 ngày, log UTF-8 tại `backups/postgres/backup.log`.
+- **Kết quả xác minh**: chạy thủ công qua `powershell -File` và qua scheduler đều exit 0, dump về host kèm checksum khớp.
+- Yêu cầu khi chạy: Docker Desktop đang chạy, container `foundation-postgres-1` Up; máy user đăng nhập (task cấp user).
+
+Trên Linux/managed, ví dụ cron chạy 02:00 UTC mỗi ngày (đặt biến môi trường an toàn qua secret manager hoặc file chỉ chủ sở hữu đọc được):
 
 ```cron
 0 2 * * * . "$HOME/.config/warehouse-backup.env"; export DATABASE_URL BACKUP_DIR; cd /path/to/FOUNDATIONs && bash scripts/backup_postgres.sh >> "$HOME/warehouse-backup.log" 2>&1
@@ -47,3 +54,14 @@ Việc chạy thử trên staging phụ thuộc quyền truy cập staging; khô
 ## Trạng thái kiểm thử hiện tại
 
 Trong workspace này đã tạo custom-format backup từ PostgreSQL Compose trước migration và đối chiếu SHA-256 thành công. Sau đó chạy cả hai script bên trong PostgreSQL container: `backup_postgres.sh` tạo dump/checksum; `restore_postgres.sh --clean` xác minh checksum và restore vào database local cô lập `warehouse_restore_validation_20261029`. Đây là xác minh luồng local pg_dump/pg_restore, chưa phải managed provider hay staging thật. Chưa có staging URI nên restore trên staging còn chưa xác minh.
+
+### Diễn tập backup → restore trên staging Docker (2026-11-17)
+
+Chạy đủ quy trình CV03 bằng hai script chính thức trong container `postgres` của stack staging đang chạy:
+
+1. **Backup**: `backup_postgres.sh` tạo `warehouse-20261117T164915Z.dump` (775.182 byte) + `.sha256` (`b90202cd3f9c909eaf9deb0fe98b65001adc889e2c9e71983e0b116d7ebcaacc`).
+2. **Restore**: tạo database validation cô lập `warehouse_restore_validation_20261117_164916`, chạy `restore_postgres.sh` (verify checksum OK trước khi `pg_restore`).
+3. **Đối chiếu bản ghi**: 14/14 bảng khớp hoàn toàn — products 1000, suppliers 50, categories 30, warehouses 10, users 6, inventory 3000, stock_documents 600, stock_document_items 6000, stock_movements 8250, audit_logs 1178, auth_sessions 3, scanner_sessions 5, scan_events 200, idempotency_requests 0.
+4. **Toàn vẹn file**: dump + checksum được `docker cp` về host `backups/postgres/`; `Get-FileHash` trên host trả cùng SHA-256 với trong container.
+
+Trình tự đầy đủ nằm trong `scripts/staging_backup_evidence.sh` (chạy bên trong container). Giới hạn còn lại: đây là staging Docker Compose local, chưa phải PostgreSQL managed (Neon/Render); khi có staging URI managed cần lặp lại theo mục "Kiểm thử khôi phục (staging)".

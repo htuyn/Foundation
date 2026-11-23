@@ -42,9 +42,19 @@ export function ScannerConnectionDialog({ open, onClose, onScan }: { open: boole
     baseUrlError = 'Production chưa cấu hình VITE_SCANNER_MOBILE_BASE_URL. Hãy đặt origin Production công khai của frontend trong Vercel trước khi tạo QR.'
   } else try {
     const parsedBaseUrl = new URL(baseUrl)
-    if (parsedBaseUrl.username || parsedBaseUrl.password || parsedBaseUrl.search || parsedBaseUrl.hash || parsedBaseUrl.pathname !== '/') baseUrlError = 'Địa chỉ frontend cấu hình phải là origin thuần, không kèm thông tin đăng nhập, path, query hoặc fragment.'
-    else if (parsedBaseUrl.protocol !== 'https:') baseUrlError = 'Điện thoại cần mở ứng dụng qua HTTPS để camera hoạt động.'
-    else if (['localhost', '127.0.0.1'].includes(parsedBaseUrl.hostname)) baseUrlError = 'Máy tính đang mở ứng dụng bằng localhost; điện thoại không thể truy cập địa chỉ này. Hãy mở frontend bằng hostname/IP LAN có HTTPS hợp lệ rồi tạo lại QR.'
+    if (parsedBaseUrl.username || parsedBaseUrl.password || parsedBaseUrl.search || parsedBaseUrl.hash || parsedBaseUrl.pathname !== '/') {
+      baseUrlError = 'Địa chỉ frontend cấu hình phải là origin thuần, không kèm thông tin đăng nhập, path, query hoặc fragment.'
+    } else if (parsedBaseUrl.protocol !== 'https:') {
+      baseUrlError = 'Điện thoại cần mở ứng dụng qua HTTPS để camera hoạt động.'
+    } else if (['localhost', '127.0.0.1'].includes(parsedBaseUrl.hostname)) {
+      // Trong DEV mode: nếu Vite đang chạy với basic-ssl (host: 0.0.0.0),
+      // hướng dẫn người dùng mở bằng IP LAN thay vì localhost.
+      if (import.meta.env.DEV) {
+        baseUrlError = 'Mở ứng dụng bằng địa chỉ IP LAN thay vì localhost để QR hoạt động với điện thoại. Vite đã hiện địa chỉ Network (ví dụ https://192.168.x.x:5173) khi khởi động.'
+      } else {
+        baseUrlError = 'Máy tính đang mở ứng dụng bằng localhost; điện thoại không thể truy cập địa chỉ này. Hãy mở frontend bằng hostname/IP LAN có HTTPS hợp lệ rồi tạo lại QR.'
+      }
+    }
   } catch {
     baseUrlError = 'Không xác định được origin frontend hợp lệ để tạo QR.'
   }

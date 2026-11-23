@@ -63,3 +63,73 @@ Scanner QR is a backend-issued, short-lived, single-use nonce (60 seconds by def
 Scanner HTTP/WebSocket endpoints validate payloads and apply process-local rate limits. Accepted formats include EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, QR_CODE and MANUAL; PostgreSQL format constraint was expanded by Alembic revision `0004_scanner_code_39`. Desktop opens the owner WebSocket during the waiting state, reconnects with backoff, and fetches persisted events after reconnect; it does not poll session status. The in-process WebSocket broadcaster and rate limiter are single-process only. Horizontal scaling needs shared pub/sub and shared gateway rate limits; mobile camera and two-device behavior remain unverified in this environment.
 
 SV2 gate scanner uses authenticated `POST /documents` rather than a new scanner transaction endpoint. Each accepted scan creates one draft document with a distinct `Idempotency-Key`; `scanEventId` is a separate scanner-event identifier. GATE_A maps only to inbound drafts and GATE_B only to outbound drafts. Warehouse/supplier/partner are selected in the scanner UI. Draft confirmation remains the only operation that changes inventory. Migration `0009_scanner_transaction_attribution` depends on workspace revision `0008_scanner_gate_attribution`.
+
+## SV2 – Gói tin thiết bị biên (Edge Device Packet Contract)
+
+Mỗi lần quét từ thiết bị biên mô phỏng (VLAN 30, trình duyệt đóng vai handheld scanner) gửi gói tin chuẩn hóa sau đây. Khóa idempotency được sinh **ngay lúc quét** và giữ nguyên khi retry, bấm đúp hay đồng bộ lại.
+
+### Gói tin thiết bị biên → API (CV01)
+
+| Trường | Kiểu | Bắt buộc | Mô tả |
+|--------|------|----------|-------|
+| `idempotency_key` | UUID v4 | ✓ | Khóa chống trùng; sinh tại thiết bị khi quét; bất biến khi retry. Gửi qua header `Idempotency-Key`. |
+| `scan_event_id` | UUID v4 | ✓ | ID sự kiện quét riêng biệt; khác `idempotency_key`. |
+| `barcode` | string EAN-13 | ✓ | 13 chữ số với check-digit hợp lệ. |
+| `quantity` | integer ≥ 1 | ✓ | Số lượng mỗi lần quét. |
+| `type` | `"IN"` \| `"OUT"` | ✓ | IN = Nhập kho (GATE_A); OUT = Xuất kho (GATE_B). |
+| `scan_point` | `"GATE_A"` \| `"GATE_B"` | ✓ | Cổng quét vật lý. |
+| `client_timestamp` | ISO 8601 + timezone | ✓ | **Giờ quét tại kho** (đồng hồ thiết bị biên). |
+| `user_id` | UUID v4 | ✓ | UUID người dùng đã xác thực. |
+
+> **Phân biệt timestamp:**
+> - `client_timestamp` = thời điểm quét được ghi tại thiết bị biên (đồng hồ kho). Có thể lệch nếu đồng hồ thiết bị không đồng bộ NTP.
+> - `server_timestamp` = `createdAt` trong response từ backend – thời điểm SV3 ghi vào PostgreSQL. **Đây là chuẩn pháp lý** cho audit, lịch sử và báo cáo.
+> - `client_timestamp` chỉ dùng để trace độ trễ mạng và phân tích hoạt động tại thiết bị biên.
+
+### Map gói tin → POST /documents
+
+```json
+{
+  "type": "Nhập kho",
+  "warehouseId": "<uuid>",
+  "supplierId": "<uuid>",
+  "note": "Scanner GATE_A · EAN-13 · 8938514907573",
+  "scanPoint": "GATE_A",
+  "scanEventId": "<uuid>",
+  "clientTimestamp": "2026-11-16T07:30:00.000+07:00",
+  "lines": [{ "productId": "<uuid>", "quantity": 1, "unitCost": 0 }]
+}
+```
+Header: `Idempotency-Key: <idempotency_key UUID v4>`
+
+### Xử lý phản hồi API (CV02)
+
+| HTTP Status | Hành động tại client |
+|-------------|----------------------|
+| 2xx | Xóa khỏi hàng đợi, ghi `server_timestamp` từ `createdAt`. |
+| 409 `DUPLICATE_KEY` | Xóa khỏi hàng đợi – coi là đã xử lý (idempotent). |
+| 400 `INSUFFICIENT_STOCK` | → Dead-Letter; cảnh báo thủ kho; không retry. |
+| 400 (dữ liệu sai), 403 | → Dead-Letter; cảnh báo thủ kho; không retry. |
+| 401 | Giữ hàng đợi nguyên; yêu cầu đăng nhập lại (PAUSED_AUTH). |
+| 5xx / lỗi mạng | Retry với exponential backoff: 1s → 2s → 4s → … → 60s (tối đa 8 lần). |
+
+### Dung lượng LocalStorage (CV02 – Bảng thực đo)
+
+```
+Quota LocalStorage (per origin)   ≈ 5 MB = 5,242,880 bytes
+UTF-16 encoding                   : 2 bytes / ký tự → 2,621,440 ký tự tối đa
+Kích thước 1 bản ghi JSON         ≈ 320 ký tự → 640 bytes UTF-16 + ~100 bytes key
+Kích thước thực tế/bản ghi        ≈ 740 bytes (đo: JSON.stringify.length × 2)
+Lượt quét tối đa offline          ≈ 5,242,880 / 740 ≈ 7,084 lượt
+Ngưỡng cảnh báo 80%               ≈ 5,667 lượt
+Hướng nâng cấp                    IndexedDB (không giới hạn cứng; đã có tại P04/P05)
+```
+
+### Điểm quét VLAN 30 (CV01 – mô phỏng)
+
+| Gate | Vị trí | Loại phiếu | VLAN |
+|------|--------|-----------|------|
+| GATE_A | Cổng Nhập A | Nhập kho (IN) | 30 |
+| GATE_B | Cổng Xuất B | Xuất kho (OUT) | 30 |
+
+> **Lưu ý thuật ngữ báo cáo:** Trình duyệt chỉ mô phỏng thiết bị cầm tay; trong báo cáo gọi là "thiết bị biên mô phỏng" (simulated edge device) và nêu rõ sự khác biệt với máy quét phần cứng thật (phần cứng thật có firmware, BLE/Wi-Fi riêng, không phụ thuộc browser APIs như `crypto.randomUUID` hoặc `localStorage`).

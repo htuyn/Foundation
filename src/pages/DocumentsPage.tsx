@@ -37,7 +37,12 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
     linesRef.current = next
     setLines(next)
   }
-  const [productId, setProductId] = useState(data.products[0]?.id ?? '')
+  const activeProducts = useMemo(() => data.products.filter((item) => item.status === 'Đang kinh doanh'), [data.products])
+  const [productId, setProductId] = useState(activeProducts[0]?.id ?? '')
+  const [productQuery, setProductQuery] = useState(() => { const p = data.products.find((item) => item.id === (activeProducts[0]?.id ?? '')); return p ? `${p.name} · ${p.sku}` : '' })
+  const [productListOpen, setProductListOpen] = useState(false)
+  const [activeProductIndex, setActiveProductIndex] = useState(-1)
+  const productComboboxRef = useRef<HTMLDivElement>(null)
   const [quantity, setQuantity] = useState(1)
   const [lastScan, setLastScan] = useState<{ barcode: string; status: 'pending' | 'success' | 'error'; message: string; product?: { name: string; sku: string; unit: string }; quantity?: number } | null>(null)
   const [lastScannedProductId, setLastScannedProductId] = useState('')
@@ -191,6 +196,38 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
       selectSupplier(availableSuppliers[activeSupplierIndex]?.id ?? availableSuppliers[0].id)
     }
   }
+  const filteredProducts = useMemo(() => {
+    const q = productQuery.trim().toLowerCase()
+    if (!q) return activeProducts.slice(0, 50)
+    return activeProducts.filter((p) => `${p.name} ${p.sku} ${p.barcode ?? ''}`.toLowerCase().includes(q)).slice(0, 50)
+  }, [activeProducts, productQuery])
+  const selectedProduct = activeProducts.find((p) => p.id === productId)
+  const selectProduct = (id: string) => {
+    const p = activeProducts.find((item) => item.id === id)
+    if (!p) return
+    setProductId(p.id)
+    setProductQuery(`${p.name} · ${p.sku}`)
+    setProductListOpen(false)
+    setActiveProductIndex(-1)
+  }
+  const handleProductKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') { setProductListOpen(false); return }
+    if (event.key === 'ArrowDown' && filteredProducts.length) {
+      event.preventDefault(); setProductListOpen(true)
+      setActiveProductIndex((i) => (i + 1) % filteredProducts.length)
+    } else if (event.key === 'ArrowUp' && filteredProducts.length) {
+      event.preventDefault(); setProductListOpen(true)
+      setActiveProductIndex((i) => i < 0 ? filteredProducts.length - 1 : (i - 1 + filteredProducts.length) % filteredProducts.length)
+    } else if (event.key === 'Enter' && productListOpen && filteredProducts.length) {
+      event.preventDefault()
+      selectProduct(filteredProducts[activeProductIndex]?.id ?? filteredProducts[0].id)
+    }
+  }
+  useEffect(() => {
+    const close = (e: PointerEvent) => { if (e.target instanceof Node && !productComboboxRef.current?.contains(e.target)) setProductListOpen(false) }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [])
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!lines.length) { notify('Vui lòng thêm ít nhất một sản phẩm vào phiếu.', 'error'); return }
@@ -202,7 +239,7 @@ function DocumentForm({ type, onClose, onSave, saving }: { type: 'Nhập kho' | 
       {type === 'Nhập kho' && <div className="document-scan-summary" aria-live="polite"><div><span>Loại sản phẩm</span><strong>{lines.length}</strong></div><div><span>Tổng số lượng</span><strong>{lines.reduce((sum, line) => sum + line.quantity, 0)}</strong></div><div><span>Giá trị dự kiến</span><strong>{money.format(total)}</strong></div></div>}
     {lastScan && <div className={`scanner-last-result ${lastScan.status}`} role="status"><div><strong>{lastScan.product?.name ?? lastScan.barcode}</strong><small>{lastScan.product ? `SKU ${lastScan.product.sku} · Barcode ${lastScan.barcode} · ${lastScan.product.unit}` : lastScan.barcode}</small></div><span>{lastScan.status === 'success' && lastScan.quantity ? `Số lượng phiếu: ${lastScan.quantity} ${lastScan.product?.unit ?? ''}` : lastScan.message}{lastScan.status === 'error' && !lastScan.product && <Link to={`/products?q=${encodeURIComponent(lastScan.barcode)}`} target="_blank" rel="noreferrer">Mở quản lý sản phẩm</Link>}</span></div>}
     {quickProduct && type === 'Nhập kho' && <section className="scanner-product-create" aria-label="Tạo nhanh sản phẩm từ barcode"><div className="scanner-product-create-heading"><div><strong>Tạo sản phẩm từ mã vừa quét</strong><small>Barcode được giữ nguyên; sản phẩm sẽ vào danh mục chung và dòng phiếu nhập vẫn ở trạng thái nháp.</small></div><button type="button" className="icon-button" aria-label="Hủy tạo sản phẩm" onClick={finishQuickProduct}><X size={16} /></button></div><div className="form-grid"><label className="form-field"><span>Barcode</span><input value={quickProduct.barcode} readOnly /></label><label className="form-field"><span>Mã SKU <b>*</b></span><input required value={quickProduct.sku} onChange={(event) => setQuickProduct((current) => current ? { ...current, sku: event.target.value.toUpperCase() } : current)} /></label><label className="form-field full"><span>Tên sản phẩm <b>*</b></span><input required autoFocus value={quickProduct.name} onChange={(event) => setQuickProduct((current) => current ? { ...current, name: event.target.value } : current)} /></label><label className="form-field"><span>Danh mục <b>*</b></span><select required value={quickProduct.category} onChange={(event) => setQuickProduct((current) => current ? { ...current, category: event.target.value } : current)}><option value="">Chọn danh mục</option>{data.categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><label className="form-field"><span>Đơn vị tính <b>*</b></span><input required value={quickProduct.unit} onChange={(event) => setQuickProduct((current) => current ? { ...current, unit: event.target.value } : current)} /></label><label className="form-field"><span>Giá nhập (₫) <b>*</b></span><input type="number" min="0" step="0.01" required value={quickProduct.cost} onChange={(event) => setQuickProduct((current) => current ? { ...current, cost: event.target.value } : current)} /></label><label className="form-field"><span>Ngưỡng tồn tối thiểu</span><input type="number" min="0" step="1" value={quickProduct.minStock} onChange={(event) => setQuickProduct((current) => current ? { ...current, minStock: event.target.value } : current)} /></label></div>{data.categories.length === 0 && <small className="field-error">Cần có danh mục trước khi tạo sản phẩm.</small>}{quickProductError && <small className="field-error" role="alert">{quickProductError}</small>}<div className="form-actions"><button type="button" className="button button-secondary" onClick={finishQuickProduct} disabled={creatingProduct}>Hủy</button><button type="button" className="button button-primary" onClick={() => void createScannedProduct()} disabled={creatingProduct || !quickProduct.sku || !quickProduct.name.trim() || !quickProduct.category || !quickProduct.unit.trim() || !data.categories.length}>{creatingProduct ? 'Đang lưu sản phẩm…' : 'Lưu sản phẩm & thêm vào phiếu'}</button></div></section>}
-    <div className="add-line-row"><select value={productId} onChange={(event) => setProductId(event.target.value)}>{data.products.filter((item) => item.status === 'Đang kinh doanh').map((item) => <option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</select><div className="quantity-input-wrap"><input aria-label="Số lượng" type="number" min="1" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} />{type === 'Xuất kho' && <small>Còn {available(productId)}</small>}</div><button type="button" className="button button-secondary add-line-button" onClick={addLine}><Plus size={15} />Thêm</button></div>
+    <div className="add-line-row"><div className="supplier-combobox product-combobox" ref={productComboboxRef}><Search size={15} className="product-combobox-icon" /><input role="combobox" aria-autocomplete="list" aria-expanded={productListOpen} aria-controls="product-suggestions" aria-activedescendant={productListOpen && activeProductIndex >= 0 && filteredProducts[activeProductIndex] ? `product-option-${filteredProducts[activeProductIndex].id}` : undefined} value={productQuery} onFocus={() => setProductListOpen(true)} onChange={(event) => { setProductQuery(event.target.value); setProductId(''); setActiveProductIndex(-1); setProductListOpen(true) }} onKeyDown={handleProductKeyDown} placeholder="Tìm theo tên, SKU hoặc barcode…" aria-label="Tìm sản phẩm" />{productListOpen && <div className="supplier-suggestions" id="product-suggestions" role="listbox" aria-label="Sản phẩm phù hợp">{filteredProducts.length ? filteredProducts.map((p, index) => <button type="button" role="option" aria-selected={index === activeProductIndex} id={`product-option-${p.id}`} key={p.id} className={`supplier-suggestion${index === activeProductIndex ? ' active' : ''}`} onMouseEnter={() => setActiveProductIndex(index)} onClick={() => selectProduct(p.id)}><strong>{p.name}</strong><span>{p.sku}{p.barcode ? ` · ${p.barcode}` : ''}</span></button>) : <div className="supplier-suggestion-empty">Không tìm thấy sản phẩm phù hợp.</div>}</div>}{selectedProduct && <small className="field-help">Đã chọn: {selectedProduct.sku} · {selectedProduct.unit}</small>}</div><div className="quantity-input-wrap"><input aria-label="Số lượng" type="number" min="1" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} />{type === 'Xuất kho' && <small>Còn {available(productId)}</small>}</div><button type="button" className="button button-secondary add-line-button" onClick={addLine} disabled={!productId}><Plus size={15} />Thêm</button></div>
       {lines.length > 0 && <div className="line-items">{lines.map((line) => { const product = data.products.find((item) => item.id === line.productId); return <div className={`line-item ${lastScannedProductId === line.productId ? 'line-item-scanned' : ''}`} key={line.productId}><div className="line-product"><strong>{product?.name}</strong><small>{product?.sku} · {product?.barcode || 'Chưa có barcode'} · {product?.unit}</small></div><div className="document-line-quantity"><button type="button" aria-label={`Giảm số lượng ${product?.name ?? ''}`} disabled={line.quantity <= 1} onClick={() => adjustLineQuantity(line.productId, -1)}><Minus size={14} /></button><label className="line-quantity"><span>Số lượng</span><input aria-label={`Số lượng ${product?.name ?? ''}`} type="number" min="1" step="1" value={line.quantity} onChange={(event) => updateLineQuantity(line.productId, event.target.value)} /></label><button type="button" aria-label={`Tăng số lượng ${product?.name ?? ''}`} onClick={() => adjustLineQuantity(line.productId, 1)}><Plus size={14} /></button></div>{type === 'Nhập kho' && <label className="line-cost"><span>Đơn giá</span><input type="number" min="0" value={line.unitCost} onChange={(event) => updateLines((current) => current.map((item) => item.productId === line.productId ? { ...item, unitCost: Number(event.target.value) } : item))} /></label>}<strong className="line-total">{money.format(line.quantity * line.unitCost)}</strong><button type="button" className="line-remove" aria-label={`Xóa ${product?.name ?? 'sản phẩm'}`} onClick={() => updateLines((current) => current.filter((item) => item.productId !== line.productId))}><X size={15} /></button></div>})}<div className="line-grand-total"><span>Tổng giá trị phiếu</span><strong>{money.format(total)}</strong></div></div>}
        <label className="form-field form-note"><span>Ghi chú</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Thông tin bổ sung cho phiếu..." /></label><FormActions onCancel={onClose} submit={saving ? 'Đang lưu…' : 'Lưu phiếu nháp'} disabled={saving} />{cameraOpen && type === 'Nhập kho' && <BarcodeScannerDialog continuous onClose={() => setCameraOpen(false)} onDetected={(barcode, format) => { handleScanEvent({ eventId: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, sessionId: 'direct-camera', barcode, format, scannedAt: new Date().toISOString() }, true) }} />}</form>
 }
