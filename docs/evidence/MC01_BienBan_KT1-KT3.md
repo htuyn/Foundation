@@ -161,3 +161,81 @@
 
 *Biên bản này là MC01 – Minh chứng kiểm thử KT1–KT3 cho SV4.*  
 *Commit tương ứng: `661c032` trên nhánh `main` – repository `htuyn/Foundation`*
+
+---
+
+## Lần chạy bổ sung – 23/11/2026 (xác nhận tái hiện)
+
+> **Người thực hiện:** SV4 – Nguyễn Nhật Long  
+> **Thời gian:** 23/11/2026, 14:24 – 14:29 (UTC+7)  
+> **Môi trường:** Production API (foundation-wheattau.vercel.app + Neon PostgreSQL)  
+> **Mục đích:** Tái hiện toàn bộ KT1–KT3 trước buổi bảo vệ, chạy bằng script Python trực tiếp
+
+### Tổng kết lần chạy 23/11/2026
+
+| Nhóm | Kết quả | Ghi chú |
+|------|---------|---------|
+| **KT1** | ✅ PASS | Phiếu PN-2026-4265, `createdAt: 2026-11-23T07:24:13Z` |
+| **KT2** | ✅ PASS | Key `5ad307b9-e62d-4930-9103-b2b056b81572`, tồn kho 278 → 278 |
+| **KT3a** | ✅ PASS | Viewer → HTTP 403 FORBIDDEN tại 14:29:07 |
+| **KT3b** | ✅ PASS | Admin → HTTP 201 Created, phiếu PN-2026-4267 |
+
+### KT1 – Chi tiết lần chạy 23/11/2026
+
+| Trường | Giá trị |
+|--------|---------|
+| Script | `scripts/kt1_create_document.py` |
+| Tài khoản | `admin@anphat.com` (Quản trị viên) |
+| Nhà cung cấp | DEMO \| Công ty cung ứng tổng hợp 001 (`89fb1d6e-...`) |
+| Barcode sản phẩm | `8997028381391` |
+| Số lượng | 5 |
+| HTTP Response | **201 Created** |
+| Mã phiếu sinh ra | **PN-2026-4265** |
+| `createdAt` (server_timestamp) | `2026-11-23T07:24:13.415213+00:00` |
+| Thời gian local (UTC+7) | `2026-11-23 14:24:13` |
+
+```
+✅ KT1 PASS!
+   Mã phiếu  : PN-2026-4265
+   Trạng thái: Bản nháp
+   Thời gian  : 2026-11-23 14:24:13
+```
+
+### KT2 – Chi tiết lần chạy 23/11/2026
+
+| Trường | Giá trị |
+|--------|---------|
+| Script | `scripts/kt2_duplicate_key.py` |
+| Idempotency-Key | `5ad307b9-e62d-4930-9103-b2b056b81572` (UUID v4 cố định) |
+| Tồn kho TRƯỚC | **278** |
+| Lần 1 – HTTP | **201 Created** lúc 14:27:50 → Phiếu PN-2026-4266 |
+| Lần 2 – HTTP | **200 OK** lúc 14:27:52 → Trả lại PN-2026-4266 (cache) |
+| Tồn kho SAU | **278** (không đổi) |
+
+```
+✅ KT2 PASS - Hệ thống chống ghi trùng hoạt động đúng!
+   Lần 1: HTTP 201 ✅
+   Lần 2: HTTP 200 ✅ (trùng key bị xử lý đúng)
+⏰ Thời gian: 2026-11-23 14:27:52
+```
+
+### KT3 – Chi tiết lần chạy 23/11/2026
+
+| Trường | Giá trị |
+|--------|---------|
+| Script | `scripts/kt3_rbac_403.py` |
+| **KT3a** – Tài khoản | `viewer@anphat.com` (Chỉ xem) |
+| KT3a – Thao tác | POST /api/v1/documents lúc 14:29:07 |
+| KT3a – HTTP | **403 Forbidden** – code: `FORBIDDEN` |
+| KT3a – Message | *"Tài khoản chỉ xem không được phép thực hiện POST /api/v1/documents."* |
+| **KT3b** – Tài khoản | `admin@anphat.com` (Quản trị viên) |
+| KT3b – HTTP | **201 Created** lúc 14:29:11 → Phiếu PN-2026-4267 |
+
+```
+✅ KT3 PASS HOÀN TOÀN!
+   Viewer → HTTP 403 FORBIDDEN ✅
+   Admin  → HTTP 201 Created   ✅
+⏰ Thời gian: 2026-11-23 14:29:03
+```
+
+> **File evidence đầy đủ:** `tests/kt_results/KT1_evidence.txt`, `KT2_evidence.txt`, `KT3_evidence.txt`
