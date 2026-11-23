@@ -147,6 +147,7 @@ Foundation/
 │   ├── kt1_create_document.py  ← KT1: Tạo phiếu nhập hợp lệ
 │   ├── kt2_duplicate_key.py    ← KT2: Chống ghi trùng
 │   ├── kt3_rbac_403.py         ← KT3: Phân quyền RBAC
+│   ├── show_audit_log.py       ← Xem Audit Log bằng token (mới)
 │   ├── load_test_runner.py     ← Đo tải 2→4→8→16 VU
 │   ├── check_inventory.py      ← Đối chiếu tồn kho vs ledger
 │   ├── run_kt_all.ps1          ← Chạy KT1+KT2+KT3 một lần
@@ -390,6 +391,54 @@ status_admin, result_admin = try_create_document(admin_token)
 ```python
 if status == 403 and status_admin == 201:
     print("✅ KT3 PASS HOÀN TOÀN!")
+```
+
+### `scripts/show_audit_log.py` – Xem Audit Log trực tiếp trên terminal (MỚI)
+
+> ⚠️ **Tại sao cần file này?**  
+> Endpoint `/api/v1/audit-logs` yêu cầu `Authorization: Bearer <token>`.  
+> Khi mở thẳng URL trên trình duyệt sẽ nhận lỗi `MISSING_ACCESS_TOKEN` vì không có token.  
+> Script này tự động login Admin → lấy token → gọi API → in log đẹp lên terminal.
+
+**Cách dùng khi bảo vệ:**
+
+```powershell
+# Chỉ xem vi phạm RBAC 403 (mặc định – dùng ngay sau KT3)
+python -X utf8 scripts\show_audit_log.py
+
+# Xem toàn bộ log (200 bản ghi mới nhất)
+python -X utf8 scripts\show_audit_log.py --all
+
+# Lọc theo từ khoá (ví dụ: tên user hoặc endpoint)
+python -X utf8 scripts\show_audit_log.py --filter viewer
+```
+
+**Output mẫu trên terminal:**
+
+```
+══════════════════════════════════════════════════════════════════════
+  📋 NHẬT KÝ AUDIT LOG – Smart Warehouse (SV4 Demo)
+══════════════════════════════════════════════════════════════════════
+
+🔑 Đăng nhập Admin để lấy token...
+✅ Đăng nhập thành công!
+
+🚫 [  1] 2026-11-23 16:30:12 | HTTP 403
+      Thông báo: [RBAC DENY 403] viewer@anphat.com | POST /api/v1/documents | ...
+      Người thực hiện: viewer@anphat.com
+      Vai trò: Chỉ xem
+      Lý do: Vai trò 'Chỉ xem' không được phép thực hiện thao tác thay đổi dữ liệu.
+```
+
+**Nói với Hội đồng khi demo:**
+> *"Script này tự login Admin, gọi API có token hợp lệ và hiển thị từng dòng vi phạm RBAC.  
+> Mỗi lần Viewer cố tình gọi API thay đổi dữ liệu, hệ thống ghi đủ: ai, vai trò gì, endpoint nào, lúc mấy giờ. Đây là bằng chứng audit có thể dùng để điều tra sau sự cố."*
+
+**Luồng hoạt động bên trong:**
+```python
+token = login("admin@anphat.com", "Admin123!")          # 1. Lấy Bearer Token
+logs  = fetch_audit_logs(token, filter_kw="RBAC DENY")  # 2. GET /api/v1/audit-logs?q=RBAC+DENY
+# 3. In từng dòng với màu sắc: 🚫 đỏ=403/401, ✅ xanh=success
 ```
 
 ### `scripts/run_kt_all.ps1` – Chạy cả 3 kịch bản
@@ -757,6 +806,7 @@ python scripts\load_test_runner.py --vus 8 --duration 60
 | `scripts/kt1_create_document.py` | Python | Kiểm thử KT1 | 140 |
 | `scripts/kt2_duplicate_key.py` | Python | Kiểm thử KT2 | 125 |
 | `scripts/kt3_rbac_403.py` | Python | Kiểm thử KT3 | 106 |
+| `scripts/show_audit_log.py` | Python | Xem Audit Log qua token (demo KT3) | ~160 |
 | `scripts/load_test_runner.py` | Python | Đo tải 2→16 VU | 320 |
 | `scripts/check_inventory.py` | Python | Đối chiếu tồn kho | 147 |
 | `scripts/run_kt_all.ps1` | PowerShell | Chạy KT1+KT2+KT3 | 68 |
@@ -766,4 +816,4 @@ python scripts\load_test_runner.py --vus 8 --duration 60
 
 ---
 
-*Tài liệu này được tạo từ mã nguồn thực tế – commit `d0240ab` – ngày 2026-11-23.*
+*Tài liệu này được tạo từ mã nguồn thực tế – cập nhật lần cuối ngày 2026-11-23 (thêm `show_audit_log.py`).*

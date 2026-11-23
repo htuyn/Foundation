@@ -33,7 +33,7 @@ foundation-postgres-1   Up (healthy)   127.0.0.1:5433->5432/tcp
 |-----|-----|----------|
 | Tab 1 | http://localhost:5173 | Frontend |
 | Tab 2 | http://localhost:8000/docs | Swagger UI (Hội đồng thích nhìn thấy API) |
-| Tab 3 | http://localhost:8000/api/v1/audit-logs | Nhật ký Audit Log (demo KT3) |
+| Tab 3 | http://localhost:8000/docs | Swagger UI – xem Audit Log có token (demo KT3) |
 
 ---
 
@@ -184,9 +184,41 @@ Hội đồng sẽ thấy:
    Admin  → HTTP 201 Created   ✅
 ```
 
-### Bước 2: Mở Audit Log để chứng minh "ghi vết vi phạm"
+### Bước 2: Hiển thị Audit Log để chứng minh "ghi vết vi phạm"
 
-Mở trình duyệt: http://localhost:8000/api/v1/audit-logs
+> ⚠️ **Lưu ý quan trọng:** Endpoint `/api/v1/audit-logs` yêu cầu Bearer Token.
+> **Không thể mở thẳng trên trình duyệt** (sẽ trả lỗi `MISSING_ACCESS_TOKEN`).
+> Dùng script bên dưới thay thế – vừa đẹp, vừa chuyên nghiệp hơn.
+
+**Chạy script xem Audit Log (terminal mới):**
+
+```powershell
+python -X utf8 scripts\show_audit_log.py
+```
+
+Hội đồng sẽ thấy trực tiếp trên terminal:
+
+```
+══════════════════════════════════════════════════════════════════════
+  📋 NHẬT KÝ AUDIT LOG – Smart Warehouse (SV4 Demo)
+══════════════════════════════════════════════════════════════════════
+
+🔑 Đăng nhập Admin để lấy token...
+✅ Đăng nhập thành công!
+
+📥 Lấy log vi phạm RBAC (403 / 401)...
+
+🚫 [  1] 2026-11-23 16:30:12 | HTTP 403
+      Thông báo: [RBAC DENY 403] viewer@anphat.com | POST /api/v1/documents | Vai trò 'Chỉ xem' không được phép thực hiện thao tác thay đổi dữ liệu.
+      Người thực hiện: viewer@anphat.com
+      Vai trò: Chỉ xem
+      Lý do: Vai trò 'Chỉ xem' không được phép thực hiện thao tác thay đổi dữ liệu.
+```
+
+> *Nếu muốn xem toàn bộ log (không chỉ 403):*
+> ```powershell
+> python -X utf8 scripts\show_audit_log.py --all
+> ```
 
 **Nói với Hội đồng:**
 
@@ -294,7 +326,7 @@ Output sẽ hiện lần lượt **KT1 → KT2 → KT3** và tự lưu evidence 
 - [ ] `docker compose ps` → 3 container `Up (healthy)`
 - [ ] http://localhost:5173 → Frontend mở được
 - [ ] http://localhost:8000/docs → Swagger mở được
-- [ ] http://localhost:8000/api/v1/audit-logs → Audit log mở được
+- [ ] `python -X utf8 scripts\show_audit_log.py` → Audit Log hiện đúng (không còn mở thẳng URL trình duyệt)
 - [ ] 3 tab terminal sẵn sàng (mở ở thư mục `Foundation`)
 - [ ] Mở sẵn file `docs/evidence/MC01_BienBan_KT1-KT3.md` và `docs/evidence/load_test_results.json`
 - [ ] Slide/báo cáo mở ở trang Chương 4 (KT1–KT3) và Chương 5 (Đo tải)
